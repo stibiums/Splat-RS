@@ -34,6 +34,9 @@ fn quad_corner(index: u32) -> vec2<f32> {
 
 fn axis_screen_offset(center: vec3<f32>, axis: vec3<f32>, center_ndc: vec2<f32>) -> vec2<f32> {
     let axis_clip = uniforms.view_proj * vec4<f32>(center + axis, 1.0);
+    if (axis_clip.w <= 0.001) {
+        return vec2<f32>(0.0, 0.0);
+    }
     return (axis_clip.xy / axis_clip.w - center_ndc) * uniforms.viewport.xy * 0.5;
 }
 
@@ -46,6 +49,14 @@ fn vs_main(input: VertexIn) -> VertexOut {
     let splat_scale = uniforms.options.z;
 
     let center_clip = uniforms.view_proj * vec4<f32>(center, 1.0);
+    if (center_clip.w <= 0.001) {
+        var out: VertexOut;
+        out.position = vec4<f32>(2.0, 2.0, 1.0, 1.0);
+        out.delta_px = vec2<f32>(0.0, 0.0);
+        out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.conic = vec4<f32>(1.0, 0.0, 1.0, 0.0);
+        return out;
+    }
     let center_ndc = center_clip.xy / center_clip.w;
 
     var cov_xx: f32;
@@ -73,7 +84,8 @@ fn vs_main(input: VertexIn) -> VertexOut {
     let diff = cov_xx - cov_yy;
     let eigen_disc = sqrt(max(diff * diff + 4.0 * cov_xy * cov_xy, 0.0));
     let max_eigen = max(0.5 * (trace + eigen_disc), 1.0);
-    let quad_radius = min(max(3.0 * sqrt(max_eigen), 2.0), 512.0);
+    let max_quad_radius = select(192.0, 8.0, point_mode);
+    let quad_radius = min(max(3.0 * sqrt(max_eigen), 2.0), max_quad_radius);
     let delta_px = corner * quad_radius;
     let det = max(cov_xx * cov_yy - cov_xy * cov_xy, 0.0001);
     let clip_xy = center_clip.xy + delta_px / uniforms.viewport.xy * 2.0 * center_clip.w;

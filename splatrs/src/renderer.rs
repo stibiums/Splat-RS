@@ -202,7 +202,13 @@ impl<'window> Renderer<'window> {
             cache: None,
         });
 
-        let sorted_instances = scene.sorted_gpu_from_eye_with_sh(camera.eye(), 0);
+        let sorted_instances = scene.sorted_gpu_for_camera(
+            camera.view(),
+            camera.eye(),
+            0,
+            camera.z_near,
+            camera.z_far,
+        );
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("instance-buffer"),
             contents: bytemuck::cast_slice(&sorted_instances),
@@ -247,8 +253,13 @@ impl<'window> Renderer<'window> {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
         if force_sort || self.last_sort.elapsed().as_millis() > 66 {
-            self.sorted_instances =
-                scene.sorted_gpu_from_eye_with_sh(camera.eye(), options.sh_degree);
+            self.sorted_instances = scene.sorted_gpu_for_camera(
+                camera.view(),
+                camera.eye(),
+                options.sh_degree,
+                camera.z_near,
+                camera.z_far,
+            );
             self.last_sort = Instant::now();
             self.upload_instances();
         }

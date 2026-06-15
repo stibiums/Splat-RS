@@ -1,4 +1,4 @@
-use glam::{Quat, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec3, Vec4};
 
 #[derive(Clone, Debug)]
 pub struct GaussianRaw {
@@ -119,6 +119,37 @@ impl SplatScene {
         order
             .into_iter()
             .map(|index| {
+                let raw = &self.raw[index];
+                let view_dir = (self.gpu[index].position() - eye).normalize_or_zero();
+                let color = sh_to_rgb(raw.f_dc, &raw.f_rest, view_dir, sh_degree);
+                self.gpu[index].with_color(color)
+            })
+            .collect()
+    }
+
+    pub fn sorted_gpu_for_camera(
+        &self,
+        view: Mat4,
+        eye: Vec3,
+        sh_degree: u32,
+        near: f32,
+        far: f32,
+    ) -> Vec<GaussianGpu> {
+        let mut visible = self
+            .gpu
+            .iter()
+            .enumerate()
+            .filter_map(|(index, splat)| {
+                let view_pos = view.transform_point3(splat.position());
+                let depth = -view_pos.z;
+                (depth > near && depth < far).then_some((index, depth))
+            })
+            .collect::<Vec<_>>();
+
+        visible.sort_unstable_by(|(_, depth_a), (_, depth_b)| depth_b.total_cmp(depth_a));
+        visible
+            .into_iter()
+            .map(|(index, _)| {
                 let raw = &self.raw[index];
                 let view_dir = (self.gpu[index].position() - eye).normalize_or_zero();
                 let color = sh_to_rgb(raw.f_dc, &raw.f_rest, view_dir, sh_degree);
@@ -307,6 +338,20 @@ mod tests {
         let sorted = scene.sorted_gpu_from_eye(Vec3::ZERO);
         let depths: Vec<f32> = sorted.iter().map(|s| s.position().z).collect();
         assert_eq!(depths, vec![5.0, 3.0, 1.0]);
+    }
+
+    #[test]
+    fn camera_depth_sort_culls_behind_camera() {
+        let raw = vec![
+            sample_raw(Vec3::new(0.0, 0.0, -1.0)),
+            sample_raw(Vec3::new(0.0, 0.0, -5.0)),
+            sample_raw(Vec3::new(0.0, 0.0, 1.0)),
+        ];
+        let scene = SplatScene::from_raw(raw, "test".into());
+        let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
+        let sorted = scene.sorted_gpu_for_camera(view, Vec3::ZERO, 0, 0.01, 100.0);
+        let depths: Vec<f32> = sorted.iter().map(|s| s.position().z).collect();
+        assert_eq!(depths, vec![-5.0, -1.0]);
     }
 
     #[test]
