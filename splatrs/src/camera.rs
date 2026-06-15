@@ -26,6 +26,28 @@ impl Camera {
         }
     }
 
+    pub fn from_eye_target(
+        eye: Vec3,
+        target: Vec3,
+        radius: f32,
+        aspect: f32,
+        fovy_radians: f32,
+    ) -> Self {
+        let offset = eye - target;
+        let distance = offset.length().max(0.01);
+        let direction = offset / distance;
+        Self {
+            target,
+            yaw: direction.x.atan2(direction.z),
+            pitch: direction.y.asin().clamp(-1.45, 1.45),
+            distance,
+            aspect,
+            fovy_radians,
+            z_near: (radius * 0.001).max(0.001),
+            z_far: (radius * 20.0).max(100.0),
+        }
+    }
+
     pub fn eye(&self) -> Vec3 {
         let cos_pitch = self.pitch.cos();
         let direction = Vec3::new(

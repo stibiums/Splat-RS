@@ -31,6 +31,9 @@ cargo run -p splatrs -- view model.ply --sh-degree d3
 the first N rows, which gives a more representative preview of large official
 models.
 
+When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
+uses its first camera as the initial viewer pose.
+
 Controls:
 
 - Left mouse drag: orbit

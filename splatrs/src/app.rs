@@ -12,6 +12,7 @@ use winit::{
 
 use crate::{
     camera::Camera,
+    cameras,
     cli::ViewArgs,
     loader,
     renderer::{RenderOptions, Renderer},
@@ -43,6 +44,7 @@ struct ViewerApp<'window> {
     window_id: Option<WindowId>,
     renderer: Option<Renderer<'window>>,
     camera: Option<Camera>,
+    initial_camera: Option<Camera>,
     render_options: RenderOptions,
     dragging: bool,
     last_cursor: Option<PhysicalPosition<f64>>,
@@ -62,6 +64,7 @@ impl<'window> ViewerApp<'window> {
             window_id: None,
             renderer: None,
             camera: None,
+            initial_camera: None,
             render_options,
             dragging: false,
             last_cursor: None,
@@ -119,16 +122,13 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
         let window_id = window.id();
         let window: &'static Window = Box::leak(Box::new(window));
         let size = window.inner_size();
-        let camera = Camera::for_scene(
-            self.scene.view_center,
-            self.scene.view_radius,
-            size.width.max(1) as f32 / size.height.max(1) as f32,
-        );
+        let camera = self.make_initial_camera(size.width, size.height);
         let renderer = pollster::block_on(Renderer::new(window, &self.scene, &camera))
             .expect("failed to initialize renderer");
 
         self.window = Some(window);
         self.window_id = Some(window_id);
+        self.initial_camera = Some(camera);
         self.camera = Some(camera);
         self.renderer = Some(renderer);
         self.force_sort = true;
@@ -183,13 +183,14 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                             (self.render_options.splat_scale / 1.15).max(0.05);
                     }
                     PhysicalKey::Code(KeyCode::KeyR) => {
-                        if let (Some(window), Some(camera)) = (self.window, self.camera.as_mut()) {
+                        if let Some(window) = self.window {
                             let size = window.inner_size();
-                            *camera = Camera::for_scene(
-                                self.scene.view_center,
-                                self.scene.view_radius,
-                                size.width.max(1) as f32 / size.height.max(1) as f32,
-                            );
+                            let next_camera = self.initial_camera.unwrap_or_else(|| {
+                                self.make_initial_camera(size.width, size.height)
+                            });
+                            if let Some(camera) = self.camera.as_mut() {
+                                *camera = next_camera;
+                            }
                             self.force_sort = true;
                         }
                     }
@@ -252,6 +253,29 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(window) = self.window {
             window.request_redraw();
+        }
+    }
+}
+
+impl<'window> ViewerApp<'window> {
+    fn make_initial_camera(&self, width: u32, height: u32) -> Camera {
+        let aspect = width.max(1) as f32 / height.max(1) as f32;
+        match cameras::load_first_preset_for_model(&self.args.model, &self.scene) {
+            Ok(Some(preset)) => {
+                tracing::info!("using camera preset from cameras.json");
+                Camera::from_eye_target(
+                    preset.eye,
+                    preset.target,
+                    self.scene.radius,
+                    aspect,
+                    preset.fovy_radians,
+                )
+            }
+            Ok(None) => Camera::for_scene(self.scene.view_center, self.scene.view_radius, aspect),
+            Err(error) => {
+                tracing::warn!("could not load cameras.json preset: {error:#}");
+                Camera::for_scene(self.scene.view_center, self.scene.view_radius, aspect)
+            }
         }
     }
 }
