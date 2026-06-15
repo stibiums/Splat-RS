@@ -45,7 +45,7 @@ impl Default for RenderOptions {
         Self {
             point_mode: false,
             opacity_scale: 1.0,
-            splat_scale: 1.0,
+            splat_scale: 0.5,
             sh_degree: 0,
         }
     }

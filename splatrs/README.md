@@ -24,7 +24,7 @@ Useful options:
 
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
-cargo run -p splatrs -- view model.ply --sh-degree d3
+cargo run -p splatrs -- view model.ply --sh-degree d3 --splat-scale 0.5
 ```
 
 `--max-splats` takes a deterministic evenly spaced subset of the PLY instead of

@@ -10,6 +10,7 @@ use crate::scene::SplatScene;
 pub struct CameraPreset {
     pub eye: Vec3,
     pub target: Vec3,
+    pub up: Vec3,
     pub fovy_radians: f32,
 }
 
@@ -58,13 +59,15 @@ impl CameraJson {
             .forward()
             .map(|dir| if dir.dot(to_scene) >= 0.0 { dir } else { -dir })
             .unwrap_or(to_scene);
-        let distance = scene.view_center.distance(eye).max(scene.view_radius);
+        let distance = scene.view_radius.max(1.0);
         let target = eye + forward * distance;
+        let up = self.up().unwrap_or(Vec3::Y);
         let fovy_radians = 2.0 * (self.height / (2.0 * self.fy)).atan();
 
         CameraPreset {
             eye,
             target,
+            up,
             fovy_radians,
         }
     }
@@ -78,6 +81,20 @@ impl CameraJson {
         let forward = c2w_z.normalize_or_zero();
         if forward.length_squared() > 0.0 {
             Some(forward)
+        } else {
+            None
+        }
+    }
+
+    fn up(&self) -> Option<Vec3> {
+        let camera_down = Vec3::new(
+            self.rotation[0][1],
+            self.rotation[1][1],
+            self.rotation[2][1],
+        );
+        let up = (-camera_down).normalize_or_zero();
+        if up.length_squared() > 0.0 {
+            Some(up)
         } else {
             None
         }
@@ -122,6 +139,7 @@ mod tests {
 
         assert_eq!(preset.eye, Vec3::new(0.0, 0.0, -4.0));
         assert!(preset.target.z > preset.eye.z);
+        assert_eq!(preset.up, -Vec3::Y);
         assert!((preset.fovy_radians - 0.927_295_2).abs() < 1e-5);
     }
 

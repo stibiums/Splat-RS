@@ -56,6 +56,8 @@ impl<'window> ViewerApp<'window> {
     fn new(args: ViewArgs, scene: SplatScene) -> Self {
         let mut render_options = RenderOptions::default();
         render_options.sh_degree = args.sh_degree.as_u32();
+        render_options.opacity_scale = args.opacity_scale.clamp(0.05, 8.0);
+        render_options.splat_scale = args.splat_scale.clamp(0.05, 12.0);
 
         Self {
             args,
@@ -263,9 +265,10 @@ impl<'window> ViewerApp<'window> {
         match cameras::load_first_preset_for_model(&self.args.model, &self.scene) {
             Ok(Some(preset)) => {
                 tracing::info!("using camera preset from cameras.json");
-                Camera::from_eye_target(
+                Camera::from_eye_target_up(
                     preset.eye,
                     preset.target,
+                    preset.up,
                     self.scene.radius,
                     aspect,
                     preset.fovy_radians,

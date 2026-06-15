@@ -50,6 +50,14 @@ pub struct ViewArgs {
     #[arg(long, value_enum, default_value_t = ShDegree::D0)]
     pub sh_degree: ShDegree,
 
+    /// Initial opacity multiplier.
+    #[arg(long, default_value_t = 1.0)]
+    pub opacity_scale: f32,
+
+    /// Initial splat radius multiplier.
+    #[arg(long, default_value_t = 0.5)]
+    pub splat_scale: f32,
+
     /// Initial window width.
     #[arg(long, default_value_t = 1280)]
     pub width: u32,

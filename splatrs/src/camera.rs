@@ -10,6 +10,7 @@ pub struct Camera {
     pub fovy_radians: f32,
     pub z_near: f32,
     pub z_far: f32,
+    pub up: Vec3,
 }
 
 impl Camera {
@@ -23,12 +24,14 @@ impl Camera {
             fovy_radians: 50.0_f32.to_radians(),
             z_near: (radius * 0.001).max(0.001),
             z_far: (radius * 20.0).max(100.0),
+            up: Vec3::Y,
         }
     }
 
-    pub fn from_eye_target(
+    pub fn from_eye_target_up(
         eye: Vec3,
         target: Vec3,
+        up: Vec3,
         radius: f32,
         aspect: f32,
         fovy_radians: f32,
@@ -45,6 +48,7 @@ impl Camera {
             fovy_radians,
             z_near: (radius * 0.001).max(0.001),
             z_far: (radius * 20.0).max(100.0),
+            up: normalize_up(up),
         }
     }
 
@@ -59,7 +63,7 @@ impl Camera {
     }
 
     pub fn view(&self) -> Mat4 {
-        Mat4::look_at_rh(self.eye(), self.target, Vec3::Y)
+        Mat4::look_at_rh(self.eye(), self.target, self.up)
     }
 
     pub fn projection(&self) -> Mat4 {
@@ -87,5 +91,14 @@ impl Camera {
     pub fn zoom(&mut self, scroll_delta: f32) {
         let scale = (1.0 - scroll_delta * 0.08).clamp(0.2, 5.0);
         self.distance = (self.distance * scale).max(0.01);
+    }
+}
+
+fn normalize_up(up: Vec3) -> Vec3 {
+    let normalized = up.normalize_or_zero();
+    if normalized.length_squared() > 0.0 {
+        normalized
+    } else {
+        Vec3::Y
     }
 }
