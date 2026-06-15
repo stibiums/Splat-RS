@@ -16,5 +16,8 @@ data/
 models/
 captures/
 *.ply
+*.zip
+*.tar
+*.tar.gz
+*.tgz
 !splatrs/examples/*.ply
-

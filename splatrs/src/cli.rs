@@ -14,6 +14,8 @@ pub struct Cli {
 pub enum Command {
     /// Open a GraphDECO-style 3DGS PLY model.
     View(ViewArgs),
+    /// Parse a GraphDECO-style 3DGS PLY model and print scene statistics.
+    Inspect(InspectArgs),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -55,4 +57,14 @@ pub struct ViewArgs {
     /// Initial window height.
     #[arg(long, default_value_t = 720)]
     pub height: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct InspectArgs {
+    /// Path to a GraphDECO-style point_cloud.ply file.
+    pub model: PathBuf,
+
+    /// Keep only the first N splats after loading.
+    #[arg(long)]
+    pub max_splats: Option<usize>,
 }

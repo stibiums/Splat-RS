@@ -16,6 +16,7 @@ The first version focuses on readability and course-project scope:
 
 ```sh
 cargo run -p splatrs -- view path/to/point_cloud.ply
+cargo run -p splatrs -- inspect path/to/point_cloud.ply
 ```
 
 Useful options:
