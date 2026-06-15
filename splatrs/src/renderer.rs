@@ -204,6 +204,7 @@ impl<'window> Renderer<'window> {
 
         let sorted_instances = scene.sorted_gpu_for_camera(
             camera.view(),
+            camera.view_projection(),
             camera.eye(),
             0,
             camera.z_near,
@@ -255,6 +256,7 @@ impl<'window> Renderer<'window> {
         if force_sort || self.last_sort.elapsed().as_millis() > 66 {
             self.sorted_instances = scene.sorted_gpu_for_camera(
                 camera.view(),
+                camera.view_projection(),
                 camera.eye(),
                 options.sh_degree,
                 camera.z_near,

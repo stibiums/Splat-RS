@@ -130,6 +130,7 @@ impl SplatScene {
     pub fn sorted_gpu_for_camera(
         &self,
         view: Mat4,
+        view_proj: Mat4,
         eye: Vec3,
         sh_degree: u32,
         near: f32,
@@ -140,9 +141,17 @@ impl SplatScene {
             .iter()
             .enumerate()
             .filter_map(|(index, splat)| {
-                let view_pos = view.transform_point3(splat.position());
+                let position = splat.position();
+                let view_pos = view.transform_point3(position);
                 let depth = -view_pos.z;
-                (depth > near && depth < far).then_some((index, depth))
+                let clip = view_proj * position.extend(1.0);
+                if clip.w <= 0.001 {
+                    return None;
+                }
+                let ndc_x = clip.x / clip.w;
+                let ndc_y = clip.y / clip.w;
+                let inside_margin = ndc_x.abs() <= 1.35 && ndc_y.abs() <= 1.35;
+                (depth > near && depth < far && inside_margin).then_some((index, depth))
             })
             .collect::<Vec<_>>();
 
@@ -349,9 +358,25 @@ mod tests {
         ];
         let scene = SplatScene::from_raw(raw, "test".into());
         let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
-        let sorted = scene.sorted_gpu_for_camera(view, Vec3::ZERO, 0, 0.01, 100.0);
+        let view_proj = Mat4::perspective_rh(60.0_f32.to_radians(), 1.0, 0.01, 100.0) * view;
+        let sorted = scene.sorted_gpu_for_camera(view, view_proj, Vec3::ZERO, 0, 0.01, 100.0);
         let depths: Vec<f32> = sorted.iter().map(|s| s.position().z).collect();
         assert_eq!(depths, vec![-5.0, -1.0]);
+    }
+
+    #[test]
+    fn camera_depth_sort_culls_far_offscreen_centers() {
+        let raw = vec![
+            sample_raw(Vec3::new(0.0, 0.0, -3.0)),
+            sample_raw(Vec3::new(100.0, 0.0, -3.0)),
+        ];
+        let scene = SplatScene::from_raw(raw, "test".into());
+        let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
+        let view_proj = Mat4::perspective_rh(60.0_f32.to_radians(), 1.0, 0.01, 100.0) * view;
+        let sorted = scene.sorted_gpu_for_camera(view, view_proj, Vec3::ZERO, 0, 0.01, 100.0);
+
+        assert_eq!(sorted.len(), 1);
+        assert_eq!(sorted[0].position(), Vec3::new(0.0, 0.0, -3.0));
     }
 
     #[test]

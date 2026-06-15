@@ -84,7 +84,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
     let diff = cov_xx - cov_yy;
     let eigen_disc = sqrt(max(diff * diff + 4.0 * cov_xy * cov_xy, 0.0));
     let max_eigen = max(0.5 * (trace + eigen_disc), 1.0);
-    let max_quad_radius = select(192.0, 8.0, point_mode);
+    let max_quad_radius = select(96.0, 8.0, point_mode);
     let quad_radius = min(max(3.0 * sqrt(max_eigen), 2.0), max_quad_radius);
     let delta_px = corner * quad_radius;
     let det = max(cov_xx * cov_yy - cov_xy * cov_xy, 0.0001);
