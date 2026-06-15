@@ -13,15 +13,24 @@ use crate::{
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
     view_proj: [[f32; 4]; 4],
+    view: [[f32; 4]; 4],
     viewport: [f32; 4],
+    focal: [f32; 4],
     options: [f32; 4],
 }
 
 impl Uniforms {
     fn new(camera: &Camera, size: PhysicalSize<u32>, options: RenderOptions) -> Self {
+        let tan_fovy = (camera.fovy_radians * 0.5).tan();
+        let tan_fovx = tan_fovy * camera.aspect.max(0.001);
+        let focal_x = size.width as f32 / (2.0 * tan_fovx.max(0.001));
+        let focal_y = size.height as f32 / (2.0 * tan_fovy.max(0.001));
+
         Self {
             view_proj: camera.view_projection().to_cols_array_2d(),
+            view: camera.view().to_cols_array_2d(),
             viewport: [size.width as f32, size.height as f32, 0.0, 0.0],
+            focal: [focal_x, focal_y, tan_fovx, tan_fovy],
             options: [
                 options.opacity_scale,
                 if options.point_mode { 1.0 } else { 0.0 },

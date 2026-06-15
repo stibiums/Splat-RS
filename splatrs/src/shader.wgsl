@@ -1,6 +1,8 @@
 struct Uniforms {
     view_proj: mat4x4<f32>,
+    view: mat4x4<f32>,
     viewport: vec4<f32>,
+    focal: vec4<f32>,
     options: vec4<f32>,
 };
 
@@ -32,12 +34,20 @@ fn quad_corner(index: u32) -> vec2<f32> {
     }
 }
 
-fn axis_screen_offset(center: vec3<f32>, axis: vec3<f32>, center_ndc: vec2<f32>) -> vec2<f32> {
-    let axis_clip = uniforms.view_proj * vec4<f32>(center + axis, 1.0);
-    if (axis_clip.w <= 0.001) {
-        return vec2<f32>(0.0, 0.0);
-    }
-    return (axis_clip.xy / axis_clip.w - center_ndc) * uniforms.viewport.xy * 0.5;
+fn axis_screen_offset(center_view: vec4<f32>, axis_world: vec3<f32>) -> vec2<f32> {
+    let axis_view = uniforms.view * vec4<f32>(axis_world, 0.0);
+    let axis_cam = vec3<f32>(axis_view.x, axis_view.y, -axis_view.z);
+    let z = max(-center_view.z, 0.001);
+
+    let lim_x = 1.3 * uniforms.focal.z;
+    let lim_y = 1.3 * uniforms.focal.w;
+    let x = clamp(center_view.x / z, -lim_x, lim_x) * z;
+    let y = clamp(center_view.y / z, -lim_y, lim_y) * z;
+
+    return vec2<f32>(
+        uniforms.focal.x / z * axis_cam.x - uniforms.focal.x * x / (z * z) * axis_cam.z,
+        uniforms.focal.y / z * axis_cam.y - uniforms.focal.y * y / (z * z) * axis_cam.z,
+    );
 }
 
 @vertex
@@ -57,7 +67,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
         out.conic = vec4<f32>(1.0, 0.0, 1.0, 0.0);
         return out;
     }
-    let center_ndc = center_clip.xy / center_clip.w;
+    let center_view = uniforms.view * vec4<f32>(center, 1.0);
 
     var cov_xx: f32;
     var cov_xy: f32;
@@ -71,13 +81,13 @@ fn vs_main(input: VertexIn) -> VertexOut {
         let axis0 = input.axis0_radius.xyz * input.axis0_radius.w * splat_scale;
         let axis1 = input.axis1_radius.xyz * input.axis1_radius.w * splat_scale;
         let axis2 = input.axis2_radius.xyz * input.axis2_radius.w * splat_scale;
-        let s0 = axis_screen_offset(center, axis0, center_ndc);
-        let s1 = axis_screen_offset(center, axis1, center_ndc);
-        let s2 = axis_screen_offset(center, axis2, center_ndc);
+        let s0 = axis_screen_offset(center_view, axis0);
+        let s1 = axis_screen_offset(center_view, axis1);
+        let s2 = axis_screen_offset(center_view, axis2);
 
-        cov_xx = dot(vec3<f32>(s0.x, s1.x, s2.x), vec3<f32>(s0.x, s1.x, s2.x)) + 0.35;
+        cov_xx = dot(vec3<f32>(s0.x, s1.x, s2.x), vec3<f32>(s0.x, s1.x, s2.x)) + 0.3;
         cov_xy = dot(vec3<f32>(s0.x, s1.x, s2.x), vec3<f32>(s0.y, s1.y, s2.y));
-        cov_yy = dot(vec3<f32>(s0.y, s1.y, s2.y), vec3<f32>(s0.y, s1.y, s2.y)) + 0.35;
+        cov_yy = dot(vec3<f32>(s0.y, s1.y, s2.y), vec3<f32>(s0.y, s1.y, s2.y)) + 0.3;
     }
 
     let trace = cov_xx + cov_yy;
