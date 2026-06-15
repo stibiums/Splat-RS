@@ -40,6 +40,11 @@ impl GaussianGpu {
         }
     }
 
+    pub fn with_color(mut self, color: Vec3) -> Self {
+        self.color = [color.x, color.y, color.z, 1.0];
+        self
+    }
+
     pub fn position(&self) -> Vec3 {
         Vec3::new(
             self.position_opacity[0],
@@ -90,22 +95,29 @@ impl SplatScene {
         let Some(first) = self.raw.first() else {
             return 0;
         };
-        match first.f_rest.len() {
-            0 => 0,
-            9 => 1,
-            24 => 2,
-            _ => 3,
-        }
+        available_sh_degree(first.f_rest.len())
     }
 
     pub fn sorted_gpu_from_eye(&self, eye: Vec3) -> Vec<GaussianGpu> {
+        self.sorted_gpu_from_eye_with_sh(eye, 0)
+    }
+
+    pub fn sorted_gpu_from_eye_with_sh(&self, eye: Vec3, sh_degree: u32) -> Vec<GaussianGpu> {
         let mut order: Vec<usize> = (0..self.gpu.len()).collect();
         order.sort_unstable_by(|&a, &b| {
             let da = self.gpu[a].position().distance_squared(eye);
             let db = self.gpu[b].position().distance_squared(eye);
             db.total_cmp(&da)
         });
-        order.into_iter().map(|index| self.gpu[index]).collect()
+        order
+            .into_iter()
+            .map(|index| {
+                let raw = &self.raw[index];
+                let view_dir = (self.gpu[index].position() - eye).normalize_or_zero();
+                let color = sh_to_rgb(raw.f_dc, &raw.f_rest, view_dir, sh_degree);
+                self.gpu[index].with_color(color)
+            })
+            .collect()
     }
 }
 
@@ -139,6 +151,96 @@ pub fn normalize_graphdeco_quat(raw: Vec4) -> Quat {
 pub fn sh_dc_to_rgb(dc: [f32; 3]) -> Vec3 {
     const C0: f32 = 0.282_094_8;
     Vec3::new(0.5 + C0 * dc[0], 0.5 + C0 * dc[1], 0.5 + C0 * dc[2]).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+pub fn sh_to_rgb(dc: [f32; 3], f_rest: &[f32], dir: Vec3, requested_degree: u32) -> Vec3 {
+    const C0: f32 = 0.282_094_8;
+    const C1: f32 = 0.488_602_52;
+    const C2: [f32; 5] = [
+        1.092_548_5,
+        -1.092_548_5,
+        0.315_391_57,
+        -1.092_548_5,
+        0.546_274_24,
+    ];
+    const C3: [f32; 7] = [
+        -0.590_043_6,
+        2.890_611_4,
+        -0.457_045_8,
+        0.373_176_34,
+        -0.457_045_8,
+        1.445_305_7,
+        -0.590_043_6,
+    ];
+
+    let degree = requested_degree.min(available_sh_degree(f_rest.len()));
+    let rest_per_channel = f_rest.len() / 3;
+    let x = dir.x;
+    let y = dir.y;
+    let z = dir.z;
+    let mut rgb = [C0 * dc[0], C0 * dc[1], C0 * dc[2]];
+
+    for channel in 0..3 {
+        if degree >= 1 {
+            rgb[channel] += -C1 * y * sh_rest(f_rest, rest_per_channel, channel, 1)
+                + C1 * z * sh_rest(f_rest, rest_per_channel, channel, 2)
+                - C1 * x * sh_rest(f_rest, rest_per_channel, channel, 3);
+        }
+
+        if degree >= 2 {
+            rgb[channel] += C2[0] * x * y * sh_rest(f_rest, rest_per_channel, channel, 4)
+                + C2[1] * y * z * sh_rest(f_rest, rest_per_channel, channel, 5)
+                + C2[2]
+                    * (2.0 * z * z - x * x - y * y)
+                    * sh_rest(f_rest, rest_per_channel, channel, 6)
+                + C2[3] * x * z * sh_rest(f_rest, rest_per_channel, channel, 7)
+                + C2[4] * (x * x - y * y) * sh_rest(f_rest, rest_per_channel, channel, 8);
+        }
+
+        if degree >= 3 {
+            rgb[channel] +=
+                C3[0] * y * (3.0 * x * x - y * y) * sh_rest(f_rest, rest_per_channel, channel, 9)
+                    + C3[1] * x * y * z * sh_rest(f_rest, rest_per_channel, channel, 10)
+                    + C3[2]
+                        * y
+                        * (4.0 * z * z - x * x - y * y)
+                        * sh_rest(f_rest, rest_per_channel, channel, 11)
+                    + C3[3]
+                        * z
+                        * (2.0 * z * z - 3.0 * x * x - 3.0 * y * y)
+                        * sh_rest(f_rest, rest_per_channel, channel, 12)
+                    + C3[4]
+                        * x
+                        * (4.0 * z * z - x * x - y * y)
+                        * sh_rest(f_rest, rest_per_channel, channel, 13)
+                    + C3[5] * z * (x * x - y * y) * sh_rest(f_rest, rest_per_channel, channel, 14)
+                    + C3[6]
+                        * x
+                        * (x * x - 3.0 * y * y)
+                        * sh_rest(f_rest, rest_per_channel, channel, 15);
+        }
+    }
+
+    Vec3::new(0.5 + rgb[0], 0.5 + rgb[1], 0.5 + rgb[2]).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+fn available_sh_degree(rest_len: usize) -> u32 {
+    match rest_len {
+        0..=8 => 0,
+        9..=23 => 1,
+        24..=44 => 2,
+        _ => 3,
+    }
+}
+
+fn sh_rest(f_rest: &[f32], rest_per_channel: usize, channel: usize, coeff_index: usize) -> f32 {
+    if coeff_index == 0 || coeff_index > rest_per_channel {
+        return 0.0;
+    }
+    f_rest
+        .get(channel * rest_per_channel + coeff_index - 1)
+        .copied()
+        .unwrap_or(0.0)
 }
 
 #[cfg(test)]
@@ -178,6 +280,23 @@ mod tests {
         raw.f_rest = vec![0.0; 24];
         let scene = SplatScene::from_raw(vec![raw], "test".into());
         assert_eq!(scene.detected_sh_degree(), 2);
+    }
+
+    #[test]
+    fn sh_degree_zero_matches_dc_color() {
+        let dc = [0.25, -0.5, 1.0];
+        assert_eq!(sh_to_rgb(dc, &[1.0; 45], Vec3::X, 0), sh_dc_to_rgb(dc));
+    }
+
+    #[test]
+    fn sh_degree_one_depends_on_view_direction() {
+        let mut f_rest = vec![0.0; 9];
+        f_rest[2] = 1.0;
+
+        let positive_x = sh_to_rgb([0.0; 3], &f_rest, Vec3::X, 1).x;
+        let negative_x = sh_to_rgb([0.0; 3], &f_rest, -Vec3::X, 1).x;
+
+        assert!(negative_x > positive_x);
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {

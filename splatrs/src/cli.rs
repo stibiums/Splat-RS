@@ -44,7 +44,7 @@ pub struct ViewArgs {
     #[arg(long)]
     pub max_splats: Option<usize>,
 
-    /// Spherical harmonics degree to evaluate. v1 renders degree 0 and stores the choice.
+    /// Spherical harmonics degree to evaluate for view-dependent color.
     #[arg(long, value_enum, default_value_t = ShDegree::D0)]
     pub sh_degree: ShDegree,
 

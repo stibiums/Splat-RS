@@ -37,6 +37,7 @@ pub struct RenderOptions {
     pub point_mode: bool,
     pub opacity_scale: f32,
     pub splat_scale: f32,
+    pub sh_degree: u32,
 }
 
 impl Default for RenderOptions {
@@ -45,6 +46,7 @@ impl Default for RenderOptions {
             point_mode: false,
             opacity_scale: 1.0,
             splat_scale: 1.0,
+            sh_degree: 0,
         }
     }
 }
@@ -200,7 +202,7 @@ impl<'window> Renderer<'window> {
             cache: None,
         });
 
-        let sorted_instances = scene.sorted_gpu_from_eye(camera.eye());
+        let sorted_instances = scene.sorted_gpu_from_eye_with_sh(camera.eye(), 0);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("instance-buffer"),
             contents: bytemuck::cast_slice(&sorted_instances),
@@ -245,7 +247,8 @@ impl<'window> Renderer<'window> {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
         if force_sort || self.last_sort.elapsed().as_millis() > 66 {
-            self.sorted_instances = scene.sorted_gpu_from_eye(camera.eye());
+            self.sorted_instances =
+                scene.sorted_gpu_from_eye_with_sh(camera.eye(), options.sh_degree);
             self.last_sort = Instant::now();
             self.upload_instances();
         }

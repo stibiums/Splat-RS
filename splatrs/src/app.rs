@@ -52,6 +52,9 @@ struct ViewerApp<'window> {
 
 impl<'window> ViewerApp<'window> {
     fn new(args: ViewArgs, scene: SplatScene) -> Self {
+        let mut render_options = RenderOptions::default();
+        render_options.sh_degree = args.sh_degree.as_u32();
+
         Self {
             args,
             scene,
@@ -59,7 +62,7 @@ impl<'window> ViewerApp<'window> {
             window_id: None,
             renderer: None,
             camera: None,
-            render_options: RenderOptions::default(),
+            render_options,
             dragging: false,
             last_cursor: None,
             force_sort: true,
@@ -94,7 +97,7 @@ impl<'window> ViewerApp<'window> {
                 },
                 self.render_options.opacity_scale,
                 self.render_options.splat_scale,
-                self.args.sh_degree.as_u32(),
+                self.render_options.sh_degree,
                 self.scene.source_label,
             ));
         }
@@ -189,6 +192,22 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                             );
                             self.force_sort = true;
                         }
+                    }
+                    PhysicalKey::Code(KeyCode::Digit0) | PhysicalKey::Code(KeyCode::Numpad0) => {
+                        self.render_options.sh_degree = 0;
+                        self.force_sort = true;
+                    }
+                    PhysicalKey::Code(KeyCode::Digit1) | PhysicalKey::Code(KeyCode::Numpad1) => {
+                        self.render_options.sh_degree = 1;
+                        self.force_sort = true;
+                    }
+                    PhysicalKey::Code(KeyCode::Digit2) | PhysicalKey::Code(KeyCode::Numpad2) => {
+                        self.render_options.sh_degree = 2;
+                        self.force_sort = true;
+                    }
+                    PhysicalKey::Code(KeyCode::Digit3) | PhysicalKey::Code(KeyCode::Numpad3) => {
+                        self.render_options.sh_degree = 3;
+                        self.force_sort = true;
                     }
                     _ => {}
                 }

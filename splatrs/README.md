@@ -8,6 +8,7 @@ The first version focuses on readability and course-project scope:
 - load official 3DGS PLY files
 - apply scale, opacity, and quaternion activations
 - CPU-sort splats back-to-front each frame
+- evaluate SH degree 0-3 color on the CPU
 - render instanced screen-space elliptical splats with wgpu
 - orbit camera controls and simple keyboard toggles
 
@@ -21,6 +22,7 @@ Useful options:
 
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
+cargo run -p splatrs -- view model.ply --sh-degree d3
 ```
 
 Controls:
@@ -30,6 +32,7 @@ Controls:
 - `P`: toggle point/splat mode
 - `O` / `I`: increase/decrease opacity scale
 - `+` / `-`: increase/decrease splat scale
+- `0`-`3`: switch SH degree
 - `R`: reset camera
 - `Esc`: quit
 
