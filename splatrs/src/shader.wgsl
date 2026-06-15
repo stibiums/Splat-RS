@@ -108,5 +108,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         discard;
     }
     let gaussian = exp(-0.5 * q);
-    return vec4<f32>(input.color.rgb * gaussian, input.color.a * gaussian);
+    let alpha = min(input.color.a * gaussian, 0.99);
+    if (alpha < 0.0039215689) {
+        discard;
+    }
+    let base_color = input.color.rgb / max(input.color.a, 0.000001);
+    return vec4<f32>(base_color * alpha, alpha);
 }
