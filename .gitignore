@@ -1,0 +1,20 @@
+/target/
+**/*.rs.bk
+
+# Local editor and OS files.
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local logs and profiling output.
+*.log
+trace/
+
+# Large local 3DGS assets should stay out of Git by default.
+data/
+models/
+captures/
+*.ply
+!splatrs/examples/*.ply
+

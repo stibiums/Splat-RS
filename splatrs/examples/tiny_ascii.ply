@@ -1,0 +1,27 @@
+ply
+format ascii 1.0
+element vertex 6
+property float x
+property float y
+property float z
+property float nx
+property float ny
+property float nz
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+-0.6 0.0 0.0 0 0 0 1.7 -0.7 -0.7 2.0 -2.0 -2.0 -2.0 1 0 0 0
+0.6 0.0 0.0 0 0 0 -0.7 1.7 -0.7 2.0 -2.0 -2.0 -2.0 1 0 0 0
+0.0 0.7 0.0 0 0 0 -0.7 -0.7 1.7 2.0 -2.0 -2.0 -2.0 1 0 0 0
+0.0 -0.7 0.0 0 0 0 1.7 1.7 -0.7 2.0 -2.0 -2.0 -2.0 1 0 0 0
+0.0 0.0 -0.7 0 0 0 -0.7 1.7 1.7 2.0 -2.0 -2.0 -2.0 1 0 0 0
+0.0 0.0 0.7 0 0 0 1.7 -0.7 1.7 2.0 -2.0 -2.0 -2.0 1 0 0 0

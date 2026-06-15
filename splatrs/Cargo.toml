@@ -1,0 +1,21 @@
+[package]
+name = "splatrs"
+version = "0.1.0"
+edition = "2024"
+description = "A small Rust/wgpu viewer for pre-trained 3D Gaussian Splatting PLY models."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
+glam = "0.29"
+pollster = "0.4"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wgpu = "23"
+winit = "0.30"
+
+[dev-dependencies]
+tempfile = "3"
