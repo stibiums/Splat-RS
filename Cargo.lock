@@ -1736,6 +1736,7 @@ dependencies = [
  "bytemuck",
  "clap",
  "glam",
+ "naga",
  "pollster",
  "tempfile",
  "thiserror 2.0.18",

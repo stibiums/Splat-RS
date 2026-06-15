@@ -14,21 +14,14 @@ use crate::{
 struct Uniforms {
     view_proj: [[f32; 4]; 4],
     viewport: [f32; 4],
-    right: [f32; 4],
-    up: [f32; 4],
     options: [f32; 4],
 }
 
 impl Uniforms {
     fn new(camera: &Camera, size: PhysicalSize<u32>, options: RenderOptions) -> Self {
-        let inv_view = camera.view().inverse();
-        let right = inv_view.x_axis.truncate();
-        let up = inv_view.y_axis.truncate();
         Self {
             view_proj: camera.view_projection().to_cols_array_2d(),
             viewport: [size.width as f32, size.height as f32, 0.0, 0.0],
-            right: [right.x, right.y, right.z, 0.0],
-            up: [up.x, up.y, up.z, 0.0],
             options: [
                 options.opacity_scale,
                 if options.point_mode { 1.0 } else { 0.0 },
@@ -336,5 +329,13 @@ fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<GaussianGpu>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &ATTRIBUTES,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn shader_parses_as_wgsl() {
+        naga::front::wgsl::parse_str(include_str!("shader.wgsl")).unwrap();
     }
 }

@@ -297,6 +297,30 @@ mod tests {
     }
 
     #[test]
+    fn binary_loader_accepts_minimal_graphdeco_schema() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(
+            b"ply\nformat binary_little_endian 1.0\nelement vertex 1\n\
+              property float x\nproperty float y\nproperty float z\n\
+              property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n\
+              property float opacity\n\
+              property float scale_0\nproperty float scale_1\nproperty float scale_2\n\
+              property float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\n\
+              end_header\n",
+        )
+        .unwrap();
+        for value in [
+            1.0_f32, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, 1.0, 0.0, 0.0, 0.0,
+        ] {
+            file.write_all(&value.to_le_bytes()).unwrap();
+        }
+
+        let scene = load_scene(file.path(), None).unwrap();
+        assert_eq!(scene.len(), 1);
+        assert_eq!(scene.raw[0].position, Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    #[test]
     fn loader_rejects_missing_required_property() {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         write!(

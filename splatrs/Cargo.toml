@@ -18,4 +18,5 @@ wgpu = "23"
 winit = "0.30"
 
 [dev-dependencies]
+naga = { version = "23", features = ["wgsl-in"] }
 tempfile = "3"

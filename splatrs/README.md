@@ -8,7 +8,7 @@ The first version focuses on readability and course-project scope:
 - load official 3DGS PLY files
 - apply scale, opacity, and quaternion activations
 - CPU-sort splats back-to-front each frame
-- render instanced elliptical splats with wgpu
+- render instanced screen-space elliptical splats with wgpu
 - orbit camera controls and simple keyboard toggles
 
 ## Usage
@@ -29,7 +29,12 @@ Controls:
 - Mouse wheel: zoom
 - `P`: toggle point/splat mode
 - `O` / `I`: increase/decrease opacity scale
+- `+` / `-`: increase/decrease splat scale
+- `R`: reset camera
 - `Esc`: quit
+
+The Rust library exposes the main course-project building blocks through
+`splatrs::{loader, scene, camera, renderer}`.
 
 ## Scope
 

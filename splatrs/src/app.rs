@@ -84,7 +84,7 @@ impl<'window> ViewerApp<'window> {
 
         if let Some(fps) = self.frame_counter.tick() {
             window.set_title(&format!(
-                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - SH d{} - {}",
+                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - SH d{} - {}",
                 self.scene.len(),
                 fps,
                 if self.render_options.point_mode {
@@ -93,6 +93,7 @@ impl<'window> ViewerApp<'window> {
                     "splats"
                 },
                 self.render_options.opacity_scale,
+                self.render_options.splat_scale,
                 self.args.sh_degree.as_u32(),
                 self.scene.source_label,
             ));
@@ -165,6 +166,29 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                     PhysicalKey::Code(KeyCode::KeyI) => {
                         self.render_options.opacity_scale =
                             (self.render_options.opacity_scale / 1.15).max(0.05);
+                    }
+                    PhysicalKey::Code(KeyCode::Equal)
+                    | PhysicalKey::Code(KeyCode::NumpadAdd)
+                    | PhysicalKey::Code(KeyCode::BracketRight) => {
+                        self.render_options.splat_scale =
+                            (self.render_options.splat_scale * 1.15).min(12.0);
+                    }
+                    PhysicalKey::Code(KeyCode::Minus)
+                    | PhysicalKey::Code(KeyCode::NumpadSubtract)
+                    | PhysicalKey::Code(KeyCode::BracketLeft) => {
+                        self.render_options.splat_scale =
+                            (self.render_options.splat_scale / 1.15).max(0.05);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyR) => {
+                        if let (Some(window), Some(camera)) = (self.window, self.camera.as_mut()) {
+                            let size = window.inner_size();
+                            *camera = Camera::for_scene(
+                                self.scene.center,
+                                self.scene.radius,
+                                size.width.max(1) as f32 / size.height.max(1) as f32,
+                            );
+                            self.force_sort = true;
+                        }
                     }
                     _ => {}
                 }

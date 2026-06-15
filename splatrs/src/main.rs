@@ -1,13 +1,9 @@
-mod app;
-mod camera;
-mod cli;
-mod loader;
-mod renderer;
-mod scene;
-
 use anyhow::Result;
 use clap::Parser;
-use cli::{Cli, Command};
+use splatrs::{
+    app,
+    cli::{Cli, Command},
+};
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

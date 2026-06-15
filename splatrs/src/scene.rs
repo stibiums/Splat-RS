@@ -172,6 +172,14 @@ mod tests {
         assert_eq!(depths, vec![5.0, 3.0, 1.0]);
     }
 
+    #[test]
+    fn detected_sh_degree_uses_rest_coefficient_count() {
+        let mut raw = sample_raw(Vec3::ZERO);
+        raw.f_rest = vec![0.0; 24];
+        let scene = SplatScene::from_raw(vec![raw], "test".into());
+        assert_eq!(scene.detected_sh_degree(), 2);
+    }
+
     fn sample_raw(position: Vec3) -> GaussianRaw {
         GaussianRaw {
             position,
