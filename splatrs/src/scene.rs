@@ -1,5 +1,11 @@
 use glam::{Mat4, Quat, Vec3, Vec4};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DepthSort {
+    BackToFront,
+    FrontToBack,
+}
+
 #[derive(Clone, Debug)]
 pub struct GaussianRaw {
     pub position: Vec3,
@@ -135,6 +141,7 @@ impl SplatScene {
         sh_degree: u32,
         near: f32,
         far: f32,
+        depth_sort: DepthSort,
     ) -> Vec<GaussianGpu> {
         let mut visible = self
             .gpu
@@ -155,7 +162,14 @@ impl SplatScene {
             })
             .collect::<Vec<_>>();
 
-        visible.sort_unstable_by(|(_, depth_a), (_, depth_b)| depth_b.total_cmp(depth_a));
+        match depth_sort {
+            DepthSort::BackToFront => {
+                visible.sort_unstable_by(|(_, depth_a), (_, depth_b)| depth_b.total_cmp(depth_a));
+            }
+            DepthSort::FrontToBack => {
+                visible.sort_unstable_by(|(_, depth_a), (_, depth_b)| depth_a.total_cmp(depth_b));
+            }
+        }
         visible
             .into_iter()
             .map(|(index, _)| {
@@ -359,9 +373,40 @@ mod tests {
         let scene = SplatScene::from_raw(raw, "test".into());
         let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
         let view_proj = Mat4::perspective_rh(60.0_f32.to_radians(), 1.0, 0.01, 100.0) * view;
-        let sorted = scene.sorted_gpu_for_camera(view, view_proj, Vec3::ZERO, 0, 0.01, 100.0);
+        let sorted = scene.sorted_gpu_for_camera(
+            view,
+            view_proj,
+            Vec3::ZERO,
+            0,
+            0.01,
+            100.0,
+            DepthSort::BackToFront,
+        );
         let depths: Vec<f32> = sorted.iter().map(|s| s.position().z).collect();
         assert_eq!(depths, vec![-5.0, -1.0]);
+    }
+
+    #[test]
+    fn camera_depth_sort_supports_front_to_back_order() {
+        let raw = vec![
+            sample_raw(Vec3::new(0.0, 0.0, -1.0)),
+            sample_raw(Vec3::new(0.0, 0.0, -5.0)),
+            sample_raw(Vec3::new(0.0, 0.0, -3.0)),
+        ];
+        let scene = SplatScene::from_raw(raw, "test".into());
+        let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
+        let view_proj = Mat4::perspective_rh(60.0_f32.to_radians(), 1.0, 0.01, 100.0) * view;
+        let sorted = scene.sorted_gpu_for_camera(
+            view,
+            view_proj,
+            Vec3::ZERO,
+            0,
+            0.01,
+            100.0,
+            DepthSort::FrontToBack,
+        );
+        let depths: Vec<f32> = sorted.iter().map(|s| s.position().z).collect();
+        assert_eq!(depths, vec![-1.0, -3.0, -5.0]);
     }
 
     #[test]
@@ -373,7 +418,15 @@ mod tests {
         let scene = SplatScene::from_raw(raw, "test".into());
         let view = Mat4::look_at_rh(Vec3::ZERO, -Vec3::Z, Vec3::Y);
         let view_proj = Mat4::perspective_rh(60.0_f32.to_radians(), 1.0, 0.01, 100.0) * view;
-        let sorted = scene.sorted_gpu_for_camera(view, view_proj, Vec3::ZERO, 0, 0.01, 100.0);
+        let sorted = scene.sorted_gpu_for_camera(
+            view,
+            view_proj,
+            Vec3::ZERO,
+            0,
+            0.01,
+            100.0,
+            DepthSort::BackToFront,
+        );
 
         assert_eq!(sorted.len(), 1);
         assert_eq!(sorted[0].position(), Vec3::new(0.0, 0.0, -3.0));

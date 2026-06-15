@@ -6,7 +6,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     camera::Camera,
-    scene::{GaussianGpu, SplatScene},
+    scene::{DepthSort, GaussianGpu, SplatScene},
 };
 
 #[repr(C)]
@@ -116,7 +116,12 @@ impl<'window> Renderer<'window> {
             .copied()
             .find(|mode| *mode == wgpu::PresentMode::Mailbox)
             .unwrap_or(wgpu::PresentMode::Fifo);
-        let alpha_mode = surface_caps.alpha_modes[0];
+        let alpha_mode = surface_caps
+            .alpha_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::CompositeAlphaMode::Opaque)
+            .unwrap_or(surface_caps.alpha_modes[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -193,13 +198,13 @@ impl<'window> Renderer<'window> {
                     format: surface_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                            dst_factor: wgpu::BlendFactor::One,
                             operation: wgpu::BlendOperation::Add,
                         },
                         alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                            dst_factor: wgpu::BlendFactor::One,
                             operation: wgpu::BlendOperation::Add,
                         },
                     }),
@@ -218,6 +223,7 @@ impl<'window> Renderer<'window> {
             0,
             camera.z_near,
             camera.z_far,
+            DepthSort::FrontToBack,
         );
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("instance-buffer"),
@@ -270,6 +276,7 @@ impl<'window> Renderer<'window> {
                 options.sh_degree,
                 camera.z_near,
                 camera.z_far,
+                DepthSort::FrontToBack,
             );
             self.last_sort = Instant::now();
             self.upload_instances();
@@ -303,7 +310,7 @@ impl<'window> Renderer<'window> {
                             r: 0.015,
                             g: 0.017,
                             b: 0.02,
-                            a: 1.0,
+                            a: 0.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
