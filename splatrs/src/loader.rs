@@ -99,7 +99,7 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
     };
 
     if let Some(limit) = max_splats {
-        raw.truncate(limit);
+        raw = sample_evenly(raw, limit);
     }
 
     if raw.is_empty() {
@@ -107,6 +107,32 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
     }
 
     Ok(SplatScene::from_raw(raw, path.display().to_string()))
+}
+
+fn sample_evenly<T>(items: Vec<T>, limit: usize) -> Vec<T> {
+    if limit >= items.len() {
+        return items;
+    }
+
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let len = items.len();
+    items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let bucket = index * limit / len;
+            let previous_bucket = index.saturating_sub(1) * limit / len;
+            if index == 0 || bucket != previous_bucket {
+                Some(item)
+            } else {
+                None
+            }
+        })
+        .take(limit)
+        .collect()
 }
 
 fn parse_header(bytes: &[u8]) -> Result<PlyHeader> {
@@ -352,5 +378,11 @@ mod tests {
         .unwrap();
         let scene = load_scene(file.path(), Some(1)).unwrap();
         assert_eq!(scene.len(), 1);
+    }
+
+    #[test]
+    fn max_splats_samples_across_file_instead_of_prefix_only() {
+        let sampled = sample_evenly((0..10).collect::<Vec<_>>(), 4);
+        assert_eq!(sampled, vec![0, 3, 5, 8]);
     }
 }

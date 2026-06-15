@@ -7,6 +7,7 @@ The first version focuses on readability and course-project scope:
 
 - load official 3DGS PLY files
 - apply scale, opacity, and quaternion activations
+- evenly sample splats when `--max-splats` is used
 - CPU-sort splats back-to-front each frame
 - evaluate SH degree 0-3 color on the CPU
 - render instanced screen-space elliptical splats with wgpu
@@ -25,6 +26,10 @@ Useful options:
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
 cargo run -p splatrs -- view model.ply --sh-degree d3
 ```
+
+`--max-splats` takes a deterministic evenly spaced subset of the PLY instead of
+the first N rows, which gives a more representative preview of large official
+models.
 
 Controls:
 

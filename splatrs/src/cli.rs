@@ -42,7 +42,7 @@ pub struct ViewArgs {
     /// Path to a GraphDECO-style point_cloud.ply file.
     pub model: PathBuf,
 
-    /// Keep only the first N splats after loading.
+    /// Keep a deterministic evenly sampled subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
 
@@ -64,7 +64,7 @@ pub struct InspectArgs {
     /// Path to a GraphDECO-style point_cloud.ply file.
     pub model: PathBuf,
 
-    /// Keep only the first N splats after loading.
+    /// Keep a deterministic evenly sampled subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
 }

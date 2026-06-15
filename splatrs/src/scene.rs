@@ -62,6 +62,8 @@ pub struct SplatScene {
     pub bounds_max: Vec3,
     pub center: Vec3,
     pub radius: f32,
+    pub view_center: Vec3,
+    pub view_radius: f32,
     pub source_label: String,
 }
 
@@ -75,6 +77,9 @@ impl SplatScene {
             .map(|s| s.position.distance(center))
             .fold(0.0, f32::max)
             .max(0.001);
+        let (view_min, view_max) = robust_bounds_for(&raw);
+        let view_center = (view_min + view_max) * 0.5;
+        let view_radius = (view_max.distance(view_min) * 0.5).max(0.001);
 
         Self {
             raw,
@@ -83,6 +88,8 @@ impl SplatScene {
             bounds_max,
             center,
             radius,
+            view_center,
+            view_radius,
             source_label,
         }
     }
@@ -125,6 +132,34 @@ fn bounds_for(raw: &[GaussianRaw]) -> (Vec3, Vec3) {
     raw.iter().fold(
         (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
         |(min, max), splat| (min.min(splat.position), max.max(splat.position)),
+    )
+}
+
+fn robust_bounds_for(raw: &[GaussianRaw]) -> (Vec3, Vec3) {
+    if raw.len() < 64 {
+        return bounds_for(raw);
+    }
+
+    let mut xs = Vec::with_capacity(raw.len());
+    let mut ys = Vec::with_capacity(raw.len());
+    let mut zs = Vec::with_capacity(raw.len());
+    for splat in raw {
+        xs.push(splat.position.x);
+        ys.push(splat.position.y);
+        zs.push(splat.position.z);
+    }
+
+    xs.sort_unstable_by(f32::total_cmp);
+    ys.sort_unstable_by(f32::total_cmp);
+    zs.sort_unstable_by(f32::total_cmp);
+
+    let trim = (raw.len() / 100).max(1);
+    let lo = trim.min(raw.len() - 1);
+    let hi = raw.len().saturating_sub(trim + 1).max(lo);
+
+    (
+        Vec3::new(xs[lo], ys[lo], zs[lo]),
+        Vec3::new(xs[hi], ys[hi], zs[hi]),
     )
 }
 
@@ -280,6 +315,19 @@ mod tests {
         raw.f_rest = vec![0.0; 24];
         let scene = SplatScene::from_raw(vec![raw], "test".into());
         assert_eq!(scene.detected_sh_degree(), 2);
+    }
+
+    #[test]
+    fn robust_view_bounds_ignore_extreme_outliers() {
+        let mut raw = (0..100)
+            .map(|index| sample_raw(Vec3::splat(index as f32)))
+            .collect::<Vec<_>>();
+        raw.push(sample_raw(Vec3::splat(10_000.0)));
+
+        let scene = SplatScene::from_raw(raw, "test".into());
+
+        assert!(scene.radius > 5_000.0);
+        assert!(scene.view_radius < 100.0);
     }
 
     #[test]

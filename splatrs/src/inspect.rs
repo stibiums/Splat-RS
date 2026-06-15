@@ -20,6 +20,8 @@ pub fn run(args: InspectArgs) -> Result<()> {
     println!("bounds max: {}", format_vec3(scene.bounds_max));
     println!("center: {}", format_vec3(scene.center));
     println!("radius: {:.6}", scene.radius);
+    println!("view center: {}", format_vec3(scene.view_center));
+    println!("view radius: {:.6}", scene.view_radius);
     println!("detected SH degree: {}", scene.detected_sh_degree());
     println!("f_rest coefficients per splat: {f_rest_count}");
     println!("estimated raw splat data: {}", format_bytes(raw_bytes));

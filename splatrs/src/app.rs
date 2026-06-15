@@ -120,8 +120,8 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
         let window: &'static Window = Box::leak(Box::new(window));
         let size = window.inner_size();
         let camera = Camera::for_scene(
-            self.scene.center,
-            self.scene.radius,
+            self.scene.view_center,
+            self.scene.view_radius,
             size.width.max(1) as f32 / size.height.max(1) as f32,
         );
         let renderer = pollster::block_on(Renderer::new(window, &self.scene, &camera))
@@ -186,8 +186,8 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                         if let (Some(window), Some(camera)) = (self.window, self.camera.as_mut()) {
                             let size = window.inner_size();
                             *camera = Camera::for_scene(
-                                self.scene.center,
-                                self.scene.radius,
+                                self.scene.view_center,
+                                self.scene.view_radius,
                                 size.width.max(1) as f32 / size.height.max(1) as f32,
                             );
                             self.force_sort = true;
