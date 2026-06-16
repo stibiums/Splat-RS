@@ -54,8 +54,8 @@ impl Default for RenderOptions {
     fn default() -> Self {
         Self {
             point_mode: false,
-            opacity_scale: 1.0,
-            splat_scale: 0.35,
+            opacity_scale: 1.2,
+            splat_scale: 0.55,
             sh_degree: 0,
             max_splat_radius: 96.0,
         }

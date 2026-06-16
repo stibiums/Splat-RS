@@ -53,11 +53,11 @@ pub struct ViewArgs {
     pub sh_degree: ShDegree,
 
     /// Initial opacity multiplier.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 1.2)]
     pub opacity_scale: f32,
 
     /// Initial splat radius multiplier.
-    #[arg(long, default_value_t = 0.35)]
+    #[arg(long, default_value_t = 0.55)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
@@ -105,11 +105,11 @@ pub struct RenderArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 1.2)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.35)]
+    #[arg(long, default_value_t = 0.55)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.

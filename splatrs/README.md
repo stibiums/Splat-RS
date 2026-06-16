@@ -7,8 +7,8 @@ The first version focuses on readability and course-project scope:
 
 - load official 3DGS PLY files
 - apply scale, opacity, and quaternion activations
-- evenly sample splats when `--max-splats` is used
-- CPU-sort splats back-to-front each frame
+- keep the most visually important splats when `--max-splats` is used
+- CPU-sort splats front-to-back each frame for transmittance blending
 - evaluate SH degree 0-3 color on the CPU
 - render instanced screen-space elliptical splats with wgpu
 - orbit camera controls and simple keyboard toggles
@@ -24,15 +24,16 @@ Useful options:
 
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
-cargo run -p splatrs -- view model.ply --sh-degree d3 --splat-scale 0.5
+cargo run -p splatrs -- view model.ply --sh-degree d3 --camera-index 5
+cargo run -p splatrs -- render model.ply -o frame.bmp --sh-degree d3 --width 1280 --height 720
 ```
 
-`--max-splats` takes a deterministic evenly spaced subset of the PLY instead of
-the first N rows, which gives a more representative preview of large official
+`--max-splats` takes a deterministic high-importance subset of the PLY instead
+of the first N rows, which preserves most visible content for large official
 models.
 
 When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
-uses its first camera as the initial viewer pose.
+uses `--camera-index` from that file as the initial viewer pose.
 
 Controls:
 
