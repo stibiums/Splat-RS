@@ -25,6 +25,7 @@ Useful options:
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
 cargo run -p splatrs -- view model.ply --sh-degree d3 --camera-index 5
+cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
 cargo run -p splatrs -- render model.ply -o frame.bmp --sh-degree d3 --width 1280 --height 720
 cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --sh-degree d3 --camera-indices 0,5,10,20
 cargo run -p splatrs -- inspect model.ply --camera-index 5 --width 1280 --height 720

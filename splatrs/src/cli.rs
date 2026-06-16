@@ -87,15 +87,15 @@ pub struct ViewArgs {
     pub sh_degree: ShDegree,
 
     /// Initial opacity multiplier.
-    #[arg(long, default_value_t = 1.4)]
+    #[arg(long, default_value_t = 1.5)]
     pub opacity_scale: f32,
 
     /// Initial splat radius multiplier.
-    #[arg(long, default_value_t = 0.43)]
+    #[arg(long, default_value_t = 0.4)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 96.0)]
+    #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
 
     /// Zero-based camera index from cameras.json to use as the initial view.
@@ -136,11 +136,11 @@ pub struct InspectArgs {
     pub height: u32,
 
     /// Splat radius multiplier used for projected radius statistics.
-    #[arg(long, default_value_t = 0.43)]
+    #[arg(long, default_value_t = 0.4)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels for projected statistics.
-    #[arg(long, default_value_t = 96.0)]
+    #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
 }
 
@@ -165,15 +165,15 @@ pub struct RenderArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.4)]
+    #[arg(long, default_value_t = 1.5)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.43)]
+    #[arg(long, default_value_t = 0.4)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 96.0)]
+    #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
 
     /// Zero-based camera index from cameras.json to render.
@@ -214,15 +214,15 @@ pub struct ContactSheetArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.4)]
+    #[arg(long, default_value_t = 1.5)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.43)]
+    #[arg(long, default_value_t = 0.4)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 96.0)]
+    #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
 
     /// Comma-separated zero-based camera indices from cameras.json.
