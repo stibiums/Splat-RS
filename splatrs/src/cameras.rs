@@ -64,7 +64,7 @@ impl CameraJson {
         let eye = Vec3::from_array(self.position);
         let fallback_forward = (scene.view_center - eye).normalize_or_zero();
         let forward = self.forward().unwrap_or(fallback_forward);
-        let distance = scene.view_radius.max(1.0);
+        let distance = visible_focus_distance(scene, eye, forward).unwrap_or(scene.view_radius);
         let target = eye + forward * distance;
         let up = self.up().unwrap_or(Vec3::Y);
         let fovy_radians = 2.0 * (self.height / (2.0 * self.fy)).atan();
@@ -104,6 +104,29 @@ impl CameraJson {
             None
         }
     }
+}
+
+fn visible_focus_distance(scene: &SplatScene, eye: Vec3, forward: Vec3) -> Option<f32> {
+    let forward = forward.normalize_or_zero();
+    if forward.length_squared() == 0.0 {
+        return None;
+    }
+
+    let mut depths = scene
+        .gpu
+        .iter()
+        .filter_map(|splat| {
+            let depth = (splat.position() - eye).dot(forward);
+            (depth.is_finite() && depth > 0.0).then_some(depth)
+        })
+        .collect::<Vec<_>>();
+    if depths.is_empty() {
+        return None;
+    }
+
+    let median_index = depths.len() / 2;
+    depths.select_nth_unstable_by(median_index, f32::total_cmp);
+    Some(depths[median_index].max(scene.view_radius * 0.02).max(0.1))
 }
 
 #[cfg(test)]
@@ -190,6 +213,33 @@ mod tests {
                 .unwrap();
 
         assert_eq!(preset.eye, Vec3::new(2.0, 0.0, -4.0));
+    }
+
+    #[test]
+    fn camera_preset_focuses_near_visible_splats() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_dir = dir.path().join("train/point_cloud/iteration_7000");
+        fs::create_dir_all(&model_dir).unwrap();
+        fs::write(
+            dir.path().join("train/cameras.json"),
+            r#"[{"position":[0.0,0.0,0.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"height":1000.0,"fy":1000.0}]"#,
+        )
+        .unwrap();
+        let scene = SplatScene::from_raw(
+            vec![
+                sample_raw(Vec3::new(0.0, 0.0, 3.0)),
+                sample_raw(Vec3::new(0.0, 0.0, 4.0)),
+                sample_raw(Vec3::new(0.0, 0.0, 100.0)),
+            ],
+            "test".into(),
+        );
+
+        let preset =
+            load_first_preset_for_model(Path::new(&model_dir.join("point_cloud.ply")), &scene)
+                .unwrap()
+                .unwrap();
+
+        assert!((preset.target.z - 4.0).abs() < 1e-6);
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {
