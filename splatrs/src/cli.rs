@@ -41,6 +41,12 @@ impl ShDegree {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum RenderBackend {
+    GpuQuad,
+    CpuTile,
+}
+
 #[derive(Debug, Args)]
 pub struct ViewArgs {
     /// Path to a GraphDECO-style point_cloud.ply file.
@@ -55,11 +61,11 @@ pub struct ViewArgs {
     pub sh_degree: ShDegree,
 
     /// Initial opacity multiplier.
-    #[arg(long, default_value_t = 1.2)]
+    #[arg(long, default_value_t = 1.4)]
     pub opacity_scale: f32,
 
     /// Initial splat radius multiplier.
-    #[arg(long, default_value_t = 0.55)]
+    #[arg(long, default_value_t = 0.43)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
@@ -101,7 +107,7 @@ pub struct InspectArgs {
     pub height: u32,
 
     /// Splat radius multiplier used for projected radius statistics.
-    #[arg(long, default_value_t = 0.55)]
+    #[arg(long, default_value_t = 0.43)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels for projected statistics.
@@ -127,11 +133,11 @@ pub struct RenderArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.2)]
+    #[arg(long, default_value_t = 1.4)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.55)]
+    #[arg(long, default_value_t = 0.43)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
@@ -149,6 +155,10 @@ pub struct RenderArgs {
     /// Output image height.
     #[arg(long, default_value_t = 720)]
     pub height: u32,
+
+    /// Headless rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackend::GpuQuad)]
+    pub backend: RenderBackend,
 }
 
 #[derive(Debug, Args)]
@@ -169,11 +179,11 @@ pub struct ContactSheetArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.2)]
+    #[arg(long, default_value_t = 1.4)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.55)]
+    #[arg(long, default_value_t = 0.43)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
@@ -195,4 +205,8 @@ pub struct ContactSheetArgs {
     /// Height of each rendered tile.
     #[arg(long, default_value_t = 360)]
     pub height: u32,
+
+    /// Headless rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackend::GpuQuad)]
+    pub backend: RenderBackend,
 }

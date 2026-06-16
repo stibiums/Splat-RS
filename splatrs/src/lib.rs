@@ -2,6 +2,7 @@ pub mod app;
 pub mod camera;
 pub mod cameras;
 pub mod cli;
+pub mod cpu_raster;
 pub mod headless;
 pub mod inspect;
 pub mod loader;

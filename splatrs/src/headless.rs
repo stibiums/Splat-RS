@@ -12,8 +12,8 @@ use winit::dpi::PhysicalSize;
 use crate::{
     camera::Camera,
     cameras,
-    cli::{ContactSheetArgs, RenderArgs},
-    loader,
+    cli::{ContactSheetArgs, RenderArgs, RenderBackend},
+    cpu_raster, loader,
     renderer::{RenderOptions, Uniforms, create_splat_pipeline, create_uniform_layout},
     scene::{DepthSort, SplatScene},
 };
@@ -34,12 +34,13 @@ pub fn run(args: RenderArgs) -> Result<()> {
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
     };
 
-    let pixels = pollster::block_on(render_offscreen(&scene, &camera, options, width, height))?;
+    let pixels = render_headless(&scene, &camera, options, width, height, args.backend)?;
     write_bmp(&args.output, width, height, &pixels)?;
 
     tracing::info!(
-        "rendered {} splats to {}",
+        "rendered {} splats with {:?} backend to {}",
         scene.len(),
+        args.backend,
         args.output.display()
     );
     Ok(())
@@ -73,13 +74,14 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
 
     for (tile_index, &camera_index) in args.camera_indices.iter().enumerate() {
         let camera = make_camera_for(&args.model, &scene, camera_index, tile_width, tile_height);
-        let pixels = pollster::block_on(render_offscreen(
+        let pixels = render_headless(
             &scene,
             &camera,
             options,
             tile_width,
             tile_height,
-        ))
+            args.backend,
+        )
         .with_context(|| format!("failed to render camera {camera_index}"))?;
         let tile_x = (tile_index % columns) as u32 * tile_width;
         let tile_y = (tile_index / columns) as u32 * tile_stride_y;
@@ -105,15 +107,34 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
 
     write_bmp(&args.output, sheet_width, sheet_height, &sheet)?;
     tracing::info!(
-        "rendered {} camera tiles from {} splats to {}",
+        "rendered {} camera tiles from {} splats with {:?} backend to {}",
         args.camera_indices.len(),
         scene.len(),
+        args.backend,
         args.output.display()
     );
     Ok(())
 }
 
-async fn render_offscreen(
+fn render_headless(
+    scene: &SplatScene,
+    camera: &Camera,
+    options: RenderOptions,
+    width: u32,
+    height: u32,
+    backend: RenderBackend,
+) -> Result<Vec<u8>> {
+    match backend {
+        RenderBackend::GpuQuad => {
+            pollster::block_on(render_offscreen_gpu(scene, camera, options, width, height))
+        }
+        RenderBackend::CpuTile => {
+            cpu_raster::render_tile_cpu(scene, camera, options, width, height)
+        }
+    }
+}
+
+async fn render_offscreen_gpu(
     scene: &SplatScene,
     camera: &Camera,
     options: RenderOptions,
