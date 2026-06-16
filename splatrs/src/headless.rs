@@ -204,7 +204,7 @@ async fn render_offscreen_gpu(
         options.sh_degree,
         camera.z_near,
         camera.z_far,
-        DepthSort::FrontToBack,
+        DepthSort::BackToFront,
     );
     let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("headless-instance-buffer"),
@@ -233,7 +233,12 @@ async fn render_offscreen_gpu(
                 view: &target_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: BACKGROUND[0] as f64,
+                        g: BACKGROUND[1] as f64,
+                        b: BACKGROUND[2] as f64,
+                        a: 1.0,
+                    }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -281,7 +286,7 @@ async fn render_offscreen_gpu(
         .context("failed to map GPU readback buffer")?;
 
     let mapped = buffer_slice.get_mapped_range();
-    let pixels = composite_readback(
+    let pixels = convert_linear_readback(
         &mapped,
         width,
         height,
@@ -394,7 +399,7 @@ fn draw_block(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32) {
     }
 }
 
-fn composite_readback(
+fn convert_linear_readback(
     readback: &[u8],
     width: u32,
     height: u32,
@@ -408,10 +413,8 @@ fn composite_readback(
         for x in 0..width as usize {
             let src = &src_row[x * 4..x * 4 + 4];
             let dst = &mut dst_row[x * 4..x * 4 + 4];
-            let alpha = src[3] as f32 / 255.0;
             for channel in 0..3 {
-                let premultiplied = src[channel] as f32 / 255.0;
-                let linear = (premultiplied + (1.0 - alpha) * BACKGROUND[channel]).clamp(0.0, 1.0);
+                let linear = (src[channel] as f32 / 255.0).clamp(0.0, 1.0);
                 dst[channel] = (linear_to_srgb(linear) * 255.0).round() as u8;
             }
             dst[3] = 255;

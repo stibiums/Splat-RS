@@ -9,6 +9,8 @@ use crate::{
     scene::{DepthSort, GaussianGpu, SplatScene},
 };
 
+const BACKGROUND: [f64; 3] = [0.015, 0.017, 0.02];
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct Uniforms {
@@ -161,7 +163,7 @@ impl<'window> Renderer<'window> {
             0,
             camera.z_near,
             camera.z_far,
-            DepthSort::FrontToBack,
+            DepthSort::BackToFront,
         );
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("instance-buffer"),
@@ -214,7 +216,7 @@ impl<'window> Renderer<'window> {
                 options.sh_degree,
                 camera.z_near,
                 camera.z_far,
-                DepthSort::FrontToBack,
+                DepthSort::BackToFront,
             );
             self.last_sort = Instant::now();
             self.upload_instances();
@@ -245,10 +247,10 @@ impl<'window> Renderer<'window> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 0.0,
+                            r: BACKGROUND[0],
+                            g: BACKGROUND[1],
+                            b: BACKGROUND[2],
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -344,13 +346,13 @@ pub(crate) fn create_splat_pipeline(
                 format: color_format,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                        dst_factor: wgpu::BlendFactor::One,
+                        src_factor: wgpu::BlendFactor::One,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                        dst_factor: wgpu::BlendFactor::One,
+                        src_factor: wgpu::BlendFactor::One,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                         operation: wgpu::BlendOperation::Add,
                     },
                 }),
