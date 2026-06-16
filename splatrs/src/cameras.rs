@@ -54,11 +54,8 @@ fn find_cameras_json(model_path: &Path) -> Option<std::path::PathBuf> {
 impl CameraJson {
     fn to_preset(&self, scene: &SplatScene) -> CameraPreset {
         let eye = Vec3::from_array(self.position);
-        let to_scene = (scene.view_center - eye).normalize_or_zero();
-        let forward = self
-            .forward()
-            .map(|dir| if dir.dot(to_scene) >= 0.0 { dir } else { -dir })
-            .unwrap_or(to_scene);
+        let fallback_forward = (scene.view_center - eye).normalize_or_zero();
+        let forward = self.forward().unwrap_or(fallback_forward);
         let distance = scene.view_radius.max(1.0);
         let target = eye + forward * distance;
         let up = self.up().unwrap_or(Vec3::Y);
@@ -141,6 +138,27 @@ mod tests {
         assert!(preset.target.z > preset.eye.z);
         assert_eq!(preset.up, -Vec3::Y);
         assert!((preset.fovy_radians - 0.927_295_2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn camera_preset_preserves_json_forward_direction() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_dir = dir.path().join("train/point_cloud/iteration_7000");
+        fs::create_dir_all(&model_dir).unwrap();
+        fs::write(
+            dir.path().join("train/cameras.json"),
+            r#"[{"position":[0.0,0.0,0.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"height":1000.0,"fy":1000.0}]"#,
+        )
+        .unwrap();
+        let scene =
+            SplatScene::from_raw(vec![sample_raw(Vec3::new(0.0, 0.0, -10.0))], "test".into());
+
+        let preset =
+            load_first_preset_for_model(Path::new(&model_dir.join("point_cloud.ply")), &scene)
+                .unwrap()
+                .unwrap();
+
+        assert!(preset.target.z > preset.eye.z);
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {
