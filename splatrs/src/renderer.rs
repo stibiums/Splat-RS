@@ -9,8 +9,6 @@ use crate::{
     scene::{DepthSort, GaussianGpu, SplatScene},
 };
 
-const BACKGROUND: [f64; 3] = [0.015, 0.017, 0.02];
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct Uniforms {
@@ -50,6 +48,7 @@ pub struct RenderOptions {
     pub splat_scale: f32,
     pub sh_degree: u32,
     pub max_splat_radius: f32,
+    pub background: [f32; 3],
 }
 
 impl Default for RenderOptions {
@@ -60,6 +59,7 @@ impl Default for RenderOptions {
             splat_scale: 0.4,
             sh_degree: 0,
             max_splat_radius: 80.0,
+            background: [0.015, 0.017, 0.02],
         }
     }
 }
@@ -247,9 +247,9 @@ impl<'window> Renderer<'window> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: BACKGROUND[0],
-                            g: BACKGROUND[1],
-                            b: BACKGROUND[2],
+                            r: options.background[0] as f64,
+                            g: options.background[1] as f64,
+                            b: options.background[2] as f64,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,

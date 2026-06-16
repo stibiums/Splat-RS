@@ -18,7 +18,6 @@ use crate::{
     scene::{DepthSort, SplatScene},
 };
 
-const BACKGROUND: [f32; 3] = [0.015, 0.017, 0.02];
 const LABEL_HEIGHT: u32 = 24;
 
 pub fn run(args: RenderArgs) -> Result<()> {
@@ -32,6 +31,7 @@ pub fn run(args: RenderArgs) -> Result<()> {
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
         sh_degree: args.sh_degree.as_u32(),
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+        background: args.background.as_rgb(),
     };
 
     let pixels = render_headless(&scene, &camera, options, width, height, args.backend)?;
@@ -70,6 +70,7 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
         sh_degree: args.sh_degree.as_u32(),
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+        background: args.background.as_rgb(),
     };
 
     for (tile_index, &camera_index) in args.camera_indices.iter().enumerate() {
@@ -234,9 +235,9 @@ async fn render_offscreen_gpu(
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: BACKGROUND[0] as f64,
-                        g: BACKGROUND[1] as f64,
-                        b: BACKGROUND[2] as f64,
+                        r: options.background[0] as f64,
+                        g: options.background[1] as f64,
+                        b: options.background[2] as f64,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,

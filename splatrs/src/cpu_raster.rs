@@ -9,7 +9,6 @@ use crate::{
     scene::{DepthSort, GaussianGpu, SplatScene},
 };
 
-const BACKGROUND: [f32; 3] = [0.015, 0.017, 0.02];
 const KERNEL_CUTOFF: f32 = 8.0;
 const TILE_SIZE: usize = 16;
 const MIN_ALPHA: f32 = 1.0 / 255.0;
@@ -55,6 +54,7 @@ pub fn render_tile_cpu(
         &tiles,
         tile_columns,
         width as usize,
+        options.background,
         &mut pixels,
     )?;
     Ok(pixels)
@@ -242,6 +242,7 @@ fn render_pixels(
     tiles: &[Vec<usize>],
     tile_columns: usize,
     width: usize,
+    background: [f32; 3],
     pixels: &mut [u8],
 ) -> Result<()> {
     let row_bytes = width * 4;
@@ -255,7 +256,15 @@ fn render_pixels(
         for (worker_index, chunk) in pixels.chunks_mut(rows_per_worker * row_bytes).enumerate() {
             let start_y = worker_index * rows_per_worker;
             scope.spawn(move || {
-                render_row_chunk(splats, tiles, tile_columns, width, start_y, chunk);
+                render_row_chunk(
+                    splats,
+                    tiles,
+                    tile_columns,
+                    width,
+                    start_y,
+                    background,
+                    chunk,
+                );
             });
         }
     });
@@ -269,6 +278,7 @@ fn render_row_chunk(
     tile_columns: usize,
     width: usize,
     start_y: usize,
+    background: [f32; 3],
     pixels: &mut [u8],
 ) {
     let row_bytes = width * 4;
@@ -279,7 +289,7 @@ fn render_row_chunk(
         for x in 0..width {
             let tile_x = x / TILE_SIZE;
             let tile = &tiles[tile_y * tile_columns + tile_x];
-            let color = render_pixel(splats, tile, x as f32 + 0.5, y as f32 + 0.5);
+            let color = render_pixel(splats, tile, x as f32 + 0.5, y as f32 + 0.5, background);
             let offset = local_y * row_bytes + x * 4;
             pixels[offset] = (linear_to_srgb(color[0]) * 255.0).round() as u8;
             pixels[offset + 1] = (linear_to_srgb(color[1]) * 255.0).round() as u8;
@@ -289,7 +299,13 @@ fn render_row_chunk(
     }
 }
 
-fn render_pixel(splats: &[CpuSplat], tile: &[usize], pixel_x: f32, pixel_y: f32) -> [f32; 3] {
+fn render_pixel(
+    splats: &[CpuSplat],
+    tile: &[usize],
+    pixel_x: f32,
+    pixel_y: f32,
+    background: [f32; 3],
+) -> [f32; 3] {
     let mut transmittance = 1.0;
     let mut color = [0.0; 3];
 
@@ -328,9 +344,9 @@ fn render_pixel(splats: &[CpuSplat], tile: &[usize], pixel_x: f32, pixel_y: f32)
     }
 
     [
-        (color[0] + transmittance * BACKGROUND[0]).clamp(0.0, 1.0),
-        (color[1] + transmittance * BACKGROUND[1]).clamp(0.0, 1.0),
-        (color[2] + transmittance * BACKGROUND[2]).clamp(0.0, 1.0),
+        (color[0] + transmittance * background[0]).clamp(0.0, 1.0),
+        (color[1] + transmittance * background[1]).clamp(0.0, 1.0),
+        (color[2] + transmittance * background[2]).clamp(0.0, 1.0),
     ]
 }
 

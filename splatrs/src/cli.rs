@@ -49,6 +49,25 @@ pub enum RenderBackend {
     CpuTile,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum Background {
+    Dark,
+    Gray,
+    White,
+    Sky,
+}
+
+impl Background {
+    pub fn as_rgb(self) -> [f32; 3] {
+        match self {
+            Self::Dark => [0.015, 0.017, 0.02],
+            Self::Gray => [0.18, 0.18, 0.18],
+            Self::White => [1.0, 1.0, 1.0],
+            Self::Sky => [0.72, 0.80, 0.92],
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Args)]
 pub struct SplatFilterArgs {
     /// Drop splats with activated opacity below this threshold.
@@ -97,6 +116,10 @@ pub struct ViewArgs {
     /// Maximum screen-space splat quad radius in pixels.
     #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
+
+    /// Background color preset used behind transparent splats.
+    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    pub background: Background,
 
     /// Zero-based camera index from cameras.json to use as the initial view.
     #[arg(long, default_value_t = 0)]
@@ -176,6 +199,10 @@ pub struct RenderArgs {
     #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
 
+    /// Background color preset used behind transparent splats.
+    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    pub background: Background,
+
     /// Zero-based camera index from cameras.json to render.
     #[arg(long, default_value_t = 0)]
     pub camera_index: usize,
@@ -224,6 +251,10 @@ pub struct ContactSheetArgs {
     /// Maximum screen-space splat quad radius in pixels.
     #[arg(long, default_value_t = 80.0)]
     pub max_splat_radius: f32,
+
+    /// Background color preset used behind transparent splats.
+    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    pub background: Background,
 
     /// Comma-separated zero-based camera indices from cameras.json.
     #[arg(long, value_delimiter = ',', default_value = "0,5,10,20")]

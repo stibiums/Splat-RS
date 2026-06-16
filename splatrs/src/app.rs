@@ -59,6 +59,7 @@ impl<'window> ViewerApp<'window> {
         render_options.opacity_scale = args.opacity_scale.clamp(0.05, 8.0);
         render_options.splat_scale = args.splat_scale.clamp(0.05, 12.0);
         render_options.max_splat_radius = args.max_splat_radius.clamp(2.0, 1024.0);
+        render_options.background = args.background.as_rgb();
 
         Self {
             args,
