@@ -11,7 +11,7 @@ use crate::{
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Uniforms {
+pub(crate) struct Uniforms {
     view_proj: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
     viewport: [f32; 4],
@@ -20,7 +20,7 @@ struct Uniforms {
 }
 
 impl Uniforms {
-    fn new(camera: &Camera, size: PhysicalSize<u32>, options: RenderOptions) -> Self {
+    pub(crate) fn new(camera: &Camera, size: PhysicalSize<u32>, options: RenderOptions) -> Self {
         let tan_fovy = (camera.fovy_radians * 0.5).tan();
         let tan_fovx = tan_fovy * camera.aspect.max(0.001);
         let focal_x = size.width as f32 / (2.0 * tan_fovx.max(0.001));
@@ -54,7 +54,7 @@ impl Default for RenderOptions {
         Self {
             point_mode: false,
             opacity_scale: 1.0,
-            splat_scale: 0.5,
+            splat_scale: 0.35,
             sh_degree: 0,
         }
     }
@@ -140,19 +140,7 @@ impl<'window> Renderer<'window> {
             contents: bytemuck::bytes_of(&uniforms),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("uniform-layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: NonZeroU64::new(std::mem::size_of::<Uniforms>() as u64),
-                },
-                count: None,
-            }],
-        });
+        let uniform_layout = create_uniform_layout(&device);
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("uniform-bind-group"),
             layout: &uniform_layout,
@@ -162,59 +150,7 @@ impl<'window> Renderer<'window> {
             }],
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("splat-shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("pipeline-layout"),
-            bind_group_layouts: &[&uniform_layout],
-            push_constant_ranges: &[],
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("splat-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[instance_layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            multiview: None,
-            cache: None,
-        });
+        let pipeline = create_splat_pipeline(&device, surface_format, &uniform_layout);
 
         let sorted_instances = scene.sorted_gpu_for_camera(
             camera.view(),
@@ -307,9 +243,9 @@ impl<'window> Renderer<'window> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.015,
-                            g: 0.017,
-                            b: 0.02,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 0.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -349,7 +285,83 @@ impl<'window> Renderer<'window> {
     }
 }
 
-fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+pub(crate) fn create_uniform_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("uniform-layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: NonZeroU64::new(std::mem::size_of::<Uniforms>() as u64),
+            },
+            count: None,
+        }],
+    })
+}
+
+pub(crate) fn create_splat_pipeline(
+    device: &wgpu::Device,
+    color_format: wgpu::TextureFormat,
+    uniform_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("splat-shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("pipeline-layout"),
+        bind_group_layouts: &[uniform_layout],
+        push_constant_ranges: &[],
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("splat-pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[instance_layout()],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            unclipped_depth: false,
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: color_format,
+                blend: Some(wgpu::BlendState {
+                    color: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                        dst_factor: wgpu::BlendFactor::One,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    alpha: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                        dst_factor: wgpu::BlendFactor::One,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                }),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        multiview: None,
+        cache: None,
+    })
+}
+
+pub(crate) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
     const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
         0 => Float32x4,
         1 => Float32x4,

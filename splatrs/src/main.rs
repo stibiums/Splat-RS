@@ -3,7 +3,7 @@ use clap::Parser;
 use splatrs::{
     app,
     cli::{Cli, Command},
-    inspect,
+    headless, inspect,
 };
 
 fn main() -> Result<()> {
@@ -17,6 +17,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::View(args) => app::run(args),
+        Command::Render(args) => headless::run(args),
         Command::Inspect(args) => inspect::run(args),
     }
 }

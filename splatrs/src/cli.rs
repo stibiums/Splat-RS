@@ -14,6 +14,8 @@ pub struct Cli {
 pub enum Command {
     /// Open a GraphDECO-style 3DGS PLY model.
     View(ViewArgs),
+    /// Render one offscreen frame to a BMP image.
+    Render(RenderArgs),
     /// Parse a GraphDECO-style 3DGS PLY model and print scene statistics.
     Inspect(InspectArgs),
 }
@@ -55,7 +57,7 @@ pub struct ViewArgs {
     pub opacity_scale: f32,
 
     /// Initial splat radius multiplier.
-    #[arg(long, default_value_t = 0.5)]
+    #[arg(long, default_value_t = 0.35)]
     pub splat_scale: f32,
 
     /// Initial window width.
@@ -75,4 +77,38 @@ pub struct InspectArgs {
     /// Keep a deterministic high-importance subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
+}
+
+#[derive(Debug, Args)]
+pub struct RenderArgs {
+    /// Path to a GraphDECO-style point_cloud.ply file.
+    pub model: PathBuf,
+
+    /// Path to the output BMP image.
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    /// Keep a deterministic high-importance subset of at most N splats.
+    #[arg(long)]
+    pub max_splats: Option<usize>,
+
+    /// Spherical harmonics degree to evaluate for view-dependent color.
+    #[arg(long, value_enum, default_value_t = ShDegree::D0)]
+    pub sh_degree: ShDegree,
+
+    /// Opacity multiplier.
+    #[arg(long, default_value_t = 1.0)]
+    pub opacity_scale: f32,
+
+    /// Splat radius multiplier.
+    #[arg(long, default_value_t = 0.35)]
+    pub splat_scale: f32,
+
+    /// Output image width.
+    #[arg(long, default_value_t = 1280)]
+    pub width: u32,
+
+    /// Output image height.
+    #[arg(long, default_value_t = 720)]
+    pub height: u32,
 }
