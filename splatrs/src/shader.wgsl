@@ -107,7 +107,8 @@ fn vs_main(input: VertexIn) -> VertexOut {
     let diff = cov_xx - cov_yy;
     let eigen_disc = sqrt(max(diff * diff + 4.0 * cov_xy * cov_xy, 0.0));
     let max_eigen = max(0.5 * (trace + eigen_disc), 1.0);
-    let quad_radius = min(max(3.0 * sqrt(max_eigen), 2.0), max_quad_radius);
+    let kernel_cutoff = 8.0;
+    let quad_radius = min(max(sqrt(kernel_cutoff * max_eigen), 2.0), max_quad_radius);
     let delta_px = corner * quad_radius;
     let det = max(cov_xx * cov_yy - cov_xy * cov_xy, 0.0001);
     let clip_xy = center_clip.xy + delta_px / uniforms.viewport.xy * 2.0 * center_clip.w;
@@ -126,7 +127,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         input.conic.x * input.delta_px.x * input.delta_px.x +
         2.0 * input.conic.y * input.delta_px.x * input.delta_px.y +
         input.conic.z * input.delta_px.y * input.delta_px.y;
-    if (q > 18.0) {
+    if (q > 8.0) {
         discard;
     }
     let gaussian = exp(-0.5 * q);
