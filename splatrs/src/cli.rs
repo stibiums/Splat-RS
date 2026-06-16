@@ -87,6 +87,26 @@ pub struct InspectArgs {
     /// Keep a deterministic high-importance subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
+
+    /// Print projected screen-space radius statistics for this cameras.json index.
+    #[arg(long)]
+    pub camera_index: Option<usize>,
+
+    /// Viewport width used for projected radius statistics.
+    #[arg(long, default_value_t = 1280)]
+    pub width: u32,
+
+    /// Viewport height used for projected radius statistics.
+    #[arg(long, default_value_t = 720)]
+    pub height: u32,
+
+    /// Splat radius multiplier used for projected radius statistics.
+    #[arg(long, default_value_t = 0.55)]
+    pub splat_scale: f32,
+
+    /// Maximum screen-space splat quad radius in pixels for projected statistics.
+    #[arg(long, default_value_t = 96.0)]
+    pub max_splat_radius: f32,
 }
 
 #[derive(Debug, Args)]
