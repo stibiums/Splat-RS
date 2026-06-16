@@ -1,5 +1,7 @@
 use glam::{Mat4, Quat, Vec3, Vec4};
 
+const CENTER_CULL_NDC_MARGIN: f32 = 2.0;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DepthSort {
     BackToFront,
@@ -157,7 +159,9 @@ impl SplatScene {
                 }
                 let ndc_x = clip.x / clip.w;
                 let ndc_y = clip.y / clip.w;
-                let inside_margin = ndc_x.abs() <= 1.35 && ndc_y.abs() <= 1.35;
+                // A splat can still overlap the screen after its center leaves the viewport.
+                let inside_margin =
+                    ndc_x.abs() <= CENTER_CULL_NDC_MARGIN && ndc_y.abs() <= CENTER_CULL_NDC_MARGIN;
                 (depth > near && depth < far && inside_margin).then_some((index, depth))
             })
             .collect::<Vec<_>>();
