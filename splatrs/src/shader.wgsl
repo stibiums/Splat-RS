@@ -101,8 +101,8 @@ fn vs_main(input: VertexIn) -> VertexOut {
     cov_xx = cov_xx * covariance_scale;
     cov_xy = cov_xy * covariance_scale;
     cov_yy = cov_yy * covariance_scale;
-    // Keep oversized splats from retaining full alpha after their footprint is clamped.
-    opacity = opacity * covariance_scale;
+    // Dampen oversized splats after their footprint is clamped.
+    opacity = opacity * covariance_scale * covariance_scale;
 
     let trace = cov_xx + cov_yy;
     let diff = cov_xx - cov_yy;
