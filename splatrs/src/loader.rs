@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail};
 use glam::{Vec3, Vec4};
 use thiserror::Error;
 
-use crate::scene::{GaussianRaw, SplatScene};
+use crate::scene::{GaussianRaw, SplatScene, sigmoid};
 
 #[derive(Debug, Error)]
 pub enum LoadError {
@@ -99,7 +99,7 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
     };
 
     if let Some(limit) = max_splats {
-        raw = sample_evenly(raw, limit);
+        raw = select_most_important(raw, limit);
     }
 
     if raw.is_empty() {
@@ -109,7 +109,7 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
     Ok(SplatScene::from_raw(raw, path.display().to_string()))
 }
 
-fn sample_evenly<T>(items: Vec<T>, limit: usize) -> Vec<T> {
+fn select_most_important(items: Vec<GaussianRaw>, limit: usize) -> Vec<GaussianRaw> {
     if limit >= items.len() {
         return items;
     }
@@ -118,21 +118,22 @@ fn sample_evenly<T>(items: Vec<T>, limit: usize) -> Vec<T> {
         return Vec::new();
     }
 
-    let len = items.len();
-    items
+    let mut ranked = items
         .into_iter()
         .enumerate()
-        .filter_map(|(index, item)| {
-            let bucket = index * limit / len;
-            let previous_bucket = index.saturating_sub(1) * limit / len;
-            if index == 0 || bucket != previous_bucket {
-                Some(item)
-            } else {
-                None
-            }
-        })
-        .take(limit)
-        .collect()
+        .map(|(index, item)| (index, gaussian_importance(&item), item))
+        .collect::<Vec<_>>();
+
+    ranked.select_nth_unstable_by(limit, |(_, importance_a, _), (_, importance_b, _)| {
+        importance_b.total_cmp(importance_a)
+    });
+    ranked.truncate(limit);
+    ranked.sort_unstable_by_key(|(index, _, _)| *index);
+    ranked.into_iter().map(|(_, _, item)| item).collect()
+}
+
+fn gaussian_importance(raw: &GaussianRaw) -> f32 {
+    raw.log_scale.element_sum().exp() * sigmoid(raw.opacity_logit)
 }
 
 fn parse_header(bytes: &[u8]) -> Result<PlyHeader> {
@@ -381,8 +382,44 @@ mod tests {
     }
 
     #[test]
-    fn max_splats_samples_across_file_instead_of_prefix_only() {
-        let sampled = sample_evenly((0..10).collect::<Vec<_>>(), 4);
-        assert_eq!(sampled, vec![0, 3, 5, 8]);
+    fn max_splats_prefers_high_importance_gaussians() {
+        let raw = vec![
+            sample_raw(Vec3::new(0.0, 0.0, 0.0), -8.0, Vec3::splat(-5.0)),
+            sample_raw(Vec3::new(1.0, 0.0, 0.0), 8.0, Vec3::splat(-1.0)),
+            sample_raw(Vec3::new(2.0, 0.0, 0.0), 0.0, Vec3::splat(-4.0)),
+        ];
+
+        let sampled = select_most_important(raw, 1);
+
+        assert_eq!(sampled.len(), 1);
+        assert_eq!(sampled[0].position, Vec3::new(1.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn max_splats_keeps_original_order_after_importance_selection() {
+        let raw = vec![
+            sample_raw(Vec3::new(0.0, 0.0, 0.0), 8.0, Vec3::splat(-1.0)),
+            sample_raw(Vec3::new(1.0, 0.0, 0.0), -8.0, Vec3::splat(-5.0)),
+            sample_raw(Vec3::new(2.0, 0.0, 0.0), 7.0, Vec3::splat(-1.0)),
+        ];
+
+        let sampled = select_most_important(raw, 2);
+        let positions = sampled
+            .into_iter()
+            .map(|item| item.position.x)
+            .collect::<Vec<_>>();
+
+        assert_eq!(positions, vec![0.0, 2.0]);
+    }
+
+    fn sample_raw(position: Vec3, opacity_logit: f32, log_scale: Vec3) -> GaussianRaw {
+        GaussianRaw {
+            position,
+            f_dc: [0.0, 0.0, 0.0],
+            f_rest: Vec::new(),
+            opacity_logit,
+            log_scale,
+            rotation_raw: Vec4::new(1.0, 0.0, 0.0, 0.0),
+        }
     }
 }
