@@ -239,7 +239,7 @@ pub fn normalize_graphdeco_quat(raw: Vec4) -> Quat {
 
 pub fn sh_dc_to_rgb(dc: [f32; 3]) -> Vec3 {
     const C0: f32 = 0.282_094_8;
-    Vec3::new(0.5 + C0 * dc[0], 0.5 + C0 * dc[1], 0.5 + C0 * dc[2]).clamp(Vec3::ZERO, Vec3::ONE)
+    Vec3::new(0.5 + C0 * dc[0], 0.5 + C0 * dc[1], 0.5 + C0 * dc[2]).max(Vec3::ZERO)
 }
 
 pub fn sh_to_rgb(dc: [f32; 3], f_rest: &[f32], dir: Vec3, requested_degree: u32) -> Vec3 {
@@ -310,7 +310,7 @@ pub fn sh_to_rgb(dc: [f32; 3], f_rest: &[f32], dir: Vec3, requested_degree: u32)
         }
     }
 
-    Vec3::new(0.5 + rgb[0], 0.5 + rgb[1], 0.5 + rgb[2]).clamp(Vec3::ZERO, Vec3::ONE)
+    Vec3::new(0.5 + rgb[0], 0.5 + rgb[1], 0.5 + rgb[2]).max(Vec3::ZERO)
 }
 
 fn available_sh_degree(rest_len: usize) -> u32 {
@@ -457,6 +457,12 @@ mod tests {
     fn sh_degree_zero_matches_dc_color() {
         let dc = [0.25, -0.5, 1.0];
         assert_eq!(sh_to_rgb(dc, &[1.0; 45], Vec3::X, 0), sh_dc_to_rgb(dc));
+    }
+
+    #[test]
+    fn sh_color_preserves_values_above_one() {
+        let rgb = sh_dc_to_rgb([4.0, 0.0, 0.0]);
+        assert!(rgb.x > 1.0);
     }
 
     #[test]
