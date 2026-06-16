@@ -18,6 +18,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::View(args) => app::run(args),
         Command::Render(args) => headless::run(args),
+        Command::ContactSheet(args) => headless::run_contact_sheet(args),
         Command::Inspect(args) => inspect::run(args),
     }
 }

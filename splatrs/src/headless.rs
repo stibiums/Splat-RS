@@ -12,13 +12,14 @@ use winit::dpi::PhysicalSize;
 use crate::{
     camera::Camera,
     cameras,
-    cli::RenderArgs,
+    cli::{ContactSheetArgs, RenderArgs},
     loader,
     renderer::{RenderOptions, Uniforms, create_splat_pipeline, create_uniform_layout},
     scene::{DepthSort, SplatScene},
 };
 
 const BACKGROUND: [f32; 3] = [0.015, 0.017, 0.02];
+const LABEL_HEIGHT: u32 = 24;
 
 pub fn run(args: RenderArgs) -> Result<()> {
     let scene = loader::load_scene(&args.model, args.max_splats)?;
@@ -38,6 +39,74 @@ pub fn run(args: RenderArgs) -> Result<()> {
 
     tracing::info!(
         "rendered {} splats to {}",
+        scene.len(),
+        args.output.display()
+    );
+    Ok(())
+}
+
+pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
+    let scene = loader::load_scene(&args.model, args.max_splats)?;
+    let tile_width = args.width.max(1);
+    let tile_height = args.height.max(1);
+    let columns = args.columns.max(1).min(args.camera_indices.len().max(1));
+    let rows = args.camera_indices.len().max(1).div_ceil(columns);
+    let sheet_width = tile_width
+        .checked_mul(columns as u32)
+        .context("contact sheet width overflowed")?;
+    let tile_stride_y = tile_height
+        .checked_add(LABEL_HEIGHT)
+        .context("contact sheet tile height overflowed")?;
+    let sheet_height = tile_stride_y
+        .checked_mul(rows as u32)
+        .context("contact sheet height overflowed")?;
+    let mut sheet = vec![0; sheet_width as usize * sheet_height as usize * 4];
+    fill_rgba(&mut sheet, [18, 20, 24, 255]);
+
+    let options = RenderOptions {
+        point_mode: false,
+        opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
+        splat_scale: args.splat_scale.clamp(0.05, 12.0),
+        sh_degree: args.sh_degree.as_u32(),
+        max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+    };
+
+    for (tile_index, &camera_index) in args.camera_indices.iter().enumerate() {
+        let camera = make_camera_for(&args.model, &scene, camera_index, tile_width, tile_height);
+        let pixels = pollster::block_on(render_offscreen(
+            &scene,
+            &camera,
+            options,
+            tile_width,
+            tile_height,
+        ))
+        .with_context(|| format!("failed to render camera {camera_index}"))?;
+        let tile_x = (tile_index % columns) as u32 * tile_width;
+        let tile_y = (tile_index / columns) as u32 * tile_stride_y;
+        draw_label(
+            &mut sheet,
+            sheet_width,
+            sheet_height,
+            tile_x + 8,
+            tile_y + 6,
+            camera_index,
+        );
+        blit_rgba(
+            &mut sheet,
+            sheet_width,
+            sheet_height,
+            &pixels,
+            tile_width,
+            tile_height,
+            tile_x,
+            tile_y + LABEL_HEIGHT,
+        );
+    }
+
+    write_bmp(&args.output, sheet_width, sheet_height, &sheet)?;
+    tracing::info!(
+        "rendered {} camera tiles from {} splats to {}",
+        args.camera_indices.len(),
         scene.len(),
         args.output.display()
     );
@@ -205,8 +274,18 @@ async fn render_offscreen(
 }
 
 fn make_camera(args: &RenderArgs, scene: &SplatScene, width: u32, height: u32) -> Camera {
+    make_camera_for(&args.model, scene, args.camera_index, width, height)
+}
+
+fn make_camera_for(
+    model: &Path,
+    scene: &SplatScene,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+) -> Camera {
     let aspect = width as f32 / height as f32;
-    match cameras::load_preset_for_model(&args.model, scene, args.camera_index) {
+    match cameras::load_preset_for_model(model, scene, camera_index) {
         Ok(Some(preset)) => Camera::from_eye_target_up(
             preset.eye,
             preset.target,
@@ -216,6 +295,81 @@ fn make_camera(args: &RenderArgs, scene: &SplatScene, width: u32, height: u32) -
             preset.fovy_radians,
         ),
         Ok(None) | Err(_) => Camera::for_scene(scene.view_center, scene.view_radius, aspect),
+    }
+}
+
+fn fill_rgba(pixels: &mut [u8], color: [u8; 4]) {
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel.copy_from_slice(&color);
+    }
+}
+
+fn blit_rgba(
+    dst: &mut [u8],
+    dst_width: u32,
+    dst_height: u32,
+    src: &[u8],
+    src_width: u32,
+    src_height: u32,
+    dst_x: u32,
+    dst_y: u32,
+) {
+    let copy_width = src_width.min(dst_width.saturating_sub(dst_x)) as usize;
+    let copy_height = src_height.min(dst_height.saturating_sub(dst_y)) as usize;
+    for y in 0..copy_height {
+        let src_start = y * src_width as usize * 4;
+        let dst_start = ((dst_y as usize + y) * dst_width as usize + dst_x as usize) * 4;
+        let byte_count = copy_width * 4;
+        dst[dst_start..dst_start + byte_count]
+            .copy_from_slice(&src[src_start..src_start + byte_count]);
+    }
+}
+
+fn draw_label(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32, value: usize) {
+    let mut cursor = x;
+    for digit in value.to_string().bytes() {
+        draw_glyph(pixels, width, height, cursor, y, (digit - b'0') as usize);
+        cursor += 12;
+    }
+}
+
+fn draw_glyph(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32, glyph: usize) {
+    const GLYPHS: [[u8; 5]; 10] = [
+        [0b111, 0b101, 0b101, 0b101, 0b111],
+        [0b010, 0b110, 0b010, 0b010, 0b111],
+        [0b111, 0b001, 0b111, 0b100, 0b111],
+        [0b111, 0b001, 0b111, 0b001, 0b111],
+        [0b101, 0b101, 0b111, 0b001, 0b001],
+        [0b111, 0b100, 0b111, 0b001, 0b111],
+        [0b111, 0b100, 0b111, 0b101, 0b111],
+        [0b111, 0b001, 0b010, 0b010, 0b010],
+        [0b111, 0b101, 0b111, 0b101, 0b111],
+        [0b111, 0b101, 0b111, 0b001, 0b111],
+    ];
+    let Some(rows) = GLYPHS.get(glyph) else {
+        return;
+    };
+    for (row, bits) in rows.iter().copied().enumerate() {
+        for col in 0..3 {
+            if bits & (1 << (2 - col)) == 0 {
+                continue;
+            }
+            draw_block(pixels, width, height, x + col * 3, y + row as u32 * 3);
+        }
+    }
+}
+
+fn draw_block(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32) {
+    for dy in 0..2 {
+        for dx in 0..2 {
+            let px = x + dx;
+            let py = y + dy;
+            if px >= width || py >= height {
+                continue;
+            }
+            let index = (py as usize * width as usize + px as usize) * 4;
+            pixels[index..index + 4].copy_from_slice(&[235, 238, 242, 255]);
+        }
     }
 }
 

@@ -16,6 +16,8 @@ pub enum Command {
     View(ViewArgs),
     /// Render one offscreen frame to a BMP image.
     Render(RenderArgs),
+    /// Render several cameras into one BMP contact sheet for debugging.
+    ContactSheet(ContactSheetArgs),
     /// Parse a GraphDECO-style 3DGS PLY model and print scene statistics.
     Inspect(InspectArgs),
 }
@@ -126,5 +128,51 @@ pub struct RenderArgs {
 
     /// Output image height.
     #[arg(long, default_value_t = 720)]
+    pub height: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct ContactSheetArgs {
+    /// Path to a GraphDECO-style point_cloud.ply file.
+    pub model: PathBuf,
+
+    /// Path to the output BMP image.
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    /// Keep a deterministic high-importance subset of at most N splats.
+    #[arg(long)]
+    pub max_splats: Option<usize>,
+
+    /// Spherical harmonics degree to evaluate for view-dependent color.
+    #[arg(long, value_enum, default_value_t = ShDegree::D0)]
+    pub sh_degree: ShDegree,
+
+    /// Opacity multiplier.
+    #[arg(long, default_value_t = 1.2)]
+    pub opacity_scale: f32,
+
+    /// Splat radius multiplier.
+    #[arg(long, default_value_t = 0.55)]
+    pub splat_scale: f32,
+
+    /// Maximum screen-space splat quad radius in pixels.
+    #[arg(long, default_value_t = 96.0)]
+    pub max_splat_radius: f32,
+
+    /// Comma-separated zero-based camera indices from cameras.json.
+    #[arg(long, value_delimiter = ',', default_value = "0,5,10,20")]
+    pub camera_indices: Vec<usize>,
+
+    /// Number of columns in the contact sheet.
+    #[arg(long, default_value_t = 2)]
+    pub columns: usize,
+
+    /// Width of each rendered tile.
+    #[arg(long, default_value_t = 640)]
+    pub width: u32,
+
+    /// Height of each rendered tile.
+    #[arg(long, default_value_t = 360)]
     pub height: u32,
 }
