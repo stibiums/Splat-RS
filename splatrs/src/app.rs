@@ -58,6 +58,7 @@ impl<'window> ViewerApp<'window> {
         render_options.sh_degree = args.sh_degree.as_u32();
         render_options.opacity_scale = args.opacity_scale.clamp(0.05, 8.0);
         render_options.splat_scale = args.splat_scale.clamp(0.05, 12.0);
+        render_options.max_splat_radius = args.max_splat_radius.clamp(2.0, 1024.0);
 
         Self {
             args,
@@ -92,7 +93,7 @@ impl<'window> ViewerApp<'window> {
 
         if let Some(fps) = self.frame_counter.tick() {
             window.set_title(&format!(
-                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - SH d{} - {}",
+                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - radius {:.0}px - SH d{} - {}",
                 self.scene.len(),
                 fps,
                 if self.render_options.point_mode {
@@ -102,6 +103,7 @@ impl<'window> ViewerApp<'window> {
                 },
                 self.render_options.opacity_scale,
                 self.render_options.splat_scale,
+                self.render_options.max_splat_radius,
                 self.render_options.sh_degree,
                 self.scene.source_label,
             ));
@@ -184,6 +186,14 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                         self.render_options.splat_scale =
                             (self.render_options.splat_scale / 1.15).max(0.05);
                     }
+                    PhysicalKey::Code(KeyCode::Period) => {
+                        self.render_options.max_splat_radius =
+                            (self.render_options.max_splat_radius * 1.15).min(1024.0);
+                    }
+                    PhysicalKey::Code(KeyCode::Comma) => {
+                        self.render_options.max_splat_radius =
+                            (self.render_options.max_splat_radius / 1.15).max(2.0);
+                    }
                     PhysicalKey::Code(KeyCode::KeyR) => {
                         if let Some(window) = self.window {
                             let size = window.inner_size();
@@ -262,9 +272,13 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
 impl<'window> ViewerApp<'window> {
     fn make_initial_camera(&self, width: u32, height: u32) -> Camera {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
-        match cameras::load_first_preset_for_model(&self.args.model, &self.scene) {
+        match cameras::load_preset_for_model(&self.args.model, &self.scene, self.args.camera_index)
+        {
             Ok(Some(preset)) => {
-                tracing::info!("using camera preset from cameras.json");
+                tracing::info!(
+                    "using camera preset {} from cameras.json",
+                    self.args.camera_index
+                );
                 Camera::from_eye_target_up(
                     preset.eye,
                     preset.target,

@@ -35,7 +35,7 @@ impl Uniforms {
                 options.opacity_scale,
                 if options.point_mode { 1.0 } else { 0.0 },
                 options.splat_scale,
-                0.0,
+                options.max_splat_radius,
             ],
         }
     }
@@ -47,6 +47,7 @@ pub struct RenderOptions {
     pub opacity_scale: f32,
     pub splat_scale: f32,
     pub sh_degree: u32,
+    pub max_splat_radius: f32,
 }
 
 impl Default for RenderOptions {
@@ -56,6 +57,7 @@ impl Default for RenderOptions {
             opacity_scale: 1.0,
             splat_scale: 0.35,
             sh_degree: 0,
+            max_splat_radius: 96.0,
         }
     }
 }

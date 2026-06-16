@@ -26,6 +26,14 @@ pub fn load_first_preset_for_model(
     model_path: &Path,
     scene: &SplatScene,
 ) -> Result<Option<CameraPreset>> {
+    load_preset_for_model(model_path, scene, 0)
+}
+
+pub fn load_preset_for_model(
+    model_path: &Path,
+    scene: &SplatScene,
+    camera_index: usize,
+) -> Result<Option<CameraPreset>> {
     let Some(cameras_path) = find_cameras_json(model_path) else {
         return Ok(None);
     };
@@ -34,7 +42,7 @@ pub fn load_first_preset_for_model(
         .with_context(|| format!("failed to open {}", cameras_path.display()))?;
     let cameras: Vec<CameraJson> = serde_json::from_reader(file)
         .with_context(|| format!("failed to parse {}", cameras_path.display()))?;
-    let Some(camera) = cameras.first() else {
+    let Some(camera) = cameras.get(camera_index) else {
         return Ok(None);
     };
 
@@ -159,6 +167,29 @@ mod tests {
                 .unwrap();
 
         assert!(preset.target.z > preset.eye.z);
+    }
+
+    #[test]
+    fn loads_requested_camera_preset_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_dir = dir.path().join("train/point_cloud/iteration_7000");
+        fs::create_dir_all(&model_dir).unwrap();
+        fs::write(
+            dir.path().join("train/cameras.json"),
+            r#"[
+                {"position":[0.0,0.0,-4.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"height":1000.0,"fy":1000.0},
+                {"position":[2.0,0.0,-4.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"height":1000.0,"fy":1000.0}
+            ]"#,
+        )
+        .unwrap();
+        let scene = SplatScene::from_raw(vec![sample_raw(Vec3::ZERO)], "test".into());
+
+        let preset =
+            load_preset_for_model(Path::new(&model_dir.join("point_cloud.ply")), &scene, 1)
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(preset.eye, Vec3::new(2.0, 0.0, -4.0));
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {

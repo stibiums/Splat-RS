@@ -30,6 +30,7 @@ pub fn run(args: RenderArgs) -> Result<()> {
         opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
         sh_degree: args.sh_degree.as_u32(),
+        max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
     };
 
     let pixels = pollster::block_on(render_offscreen(&scene, &camera, options, width, height))?;
@@ -205,7 +206,7 @@ async fn render_offscreen(
 
 fn make_camera(args: &RenderArgs, scene: &SplatScene, width: u32, height: u32) -> Camera {
     let aspect = width as f32 / height as f32;
-    match cameras::load_first_preset_for_model(&args.model, scene) {
+    match cameras::load_preset_for_model(&args.model, scene, args.camera_index) {
         Ok(Some(preset)) => Camera::from_eye_target_up(
             preset.eye,
             preset.target,

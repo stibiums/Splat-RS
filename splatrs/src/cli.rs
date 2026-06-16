@@ -60,6 +60,14 @@ pub struct ViewArgs {
     #[arg(long, default_value_t = 0.35)]
     pub splat_scale: f32,
 
+    /// Maximum screen-space splat quad radius in pixels.
+    #[arg(long, default_value_t = 96.0)]
+    pub max_splat_radius: f32,
+
+    /// Zero-based camera index from cameras.json to use as the initial view.
+    #[arg(long, default_value_t = 0)]
+    pub camera_index: usize,
+
     /// Initial window width.
     #[arg(long, default_value_t = 1280)]
     pub width: u32,
@@ -103,6 +111,14 @@ pub struct RenderArgs {
     /// Splat radius multiplier.
     #[arg(long, default_value_t = 0.35)]
     pub splat_scale: f32,
+
+    /// Maximum screen-space splat quad radius in pixels.
+    #[arg(long, default_value_t = 96.0)]
+    pub max_splat_radius: f32,
+
+    /// Zero-based camera index from cameras.json to render.
+    #[arg(long, default_value_t = 0)]
+    pub camera_index: usize,
 
     /// Output image width.
     #[arg(long, default_value_t = 1280)]
