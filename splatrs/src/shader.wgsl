@@ -54,7 +54,7 @@ fn axis_screen_offset(center_view: vec4<f32>, axis_world: vec3<f32>) -> vec2<f32
 fn vs_main(input: VertexIn) -> VertexOut {
     let corner = quad_corner(input.vertex_index);
     let center = input.position_opacity.xyz;
-    let opacity = clamp(input.position_opacity.w * uniforms.options.x, 0.0, 1.0);
+    var opacity = clamp(input.position_opacity.w * uniforms.options.x, 0.0, 1.0);
     let point_mode = uniforms.options.y > 0.5;
     let splat_scale = uniforms.options.z;
     let max_splat_radius_option = uniforms.options.w;
@@ -91,11 +91,22 @@ fn vs_main(input: VertexIn) -> VertexOut {
         cov_yy = dot(vec3<f32>(s0.y, s1.y, s2.y), vec3<f32>(s0.y, s1.y, s2.y)) + 0.3;
     }
 
+    let max_quad_radius = select(max(max_splat_radius_option, 2.0), 8.0, point_mode);
+    let raw_trace = cov_xx + cov_yy;
+    let raw_diff = cov_xx - cov_yy;
+    let raw_eigen_disc = sqrt(max(raw_diff * raw_diff + 4.0 * cov_xy * cov_xy, 0.0));
+    let raw_max_eigen = max(0.5 * (raw_trace + raw_eigen_disc), 1.0);
+    let max_allowed_eigen = max((max_quad_radius / 3.0) * (max_quad_radius / 3.0), 1.0);
+    let covariance_scale = min(1.0, max_allowed_eigen / raw_max_eigen);
+    cov_xx = cov_xx * covariance_scale;
+    cov_xy = cov_xy * covariance_scale;
+    cov_yy = cov_yy * covariance_scale;
+    opacity = opacity * sqrt(covariance_scale);
+
     let trace = cov_xx + cov_yy;
     let diff = cov_xx - cov_yy;
     let eigen_disc = sqrt(max(diff * diff + 4.0 * cov_xy * cov_xy, 0.0));
     let max_eigen = max(0.5 * (trace + eigen_disc), 1.0);
-    let max_quad_radius = select(max(max_splat_radius_option, 2.0), 8.0, point_mode);
     let quad_radius = min(max(3.0 * sqrt(max_eigen), 2.0), max_quad_radius);
     let delta_px = corner * quad_radius;
     let det = max(cov_xx * cov_yy - cov_xy * cov_xy, 0.0001);
