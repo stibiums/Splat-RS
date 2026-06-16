@@ -20,6 +20,8 @@ struct CameraJson {
     rotation: [[f32; 3]; 3],
     height: f32,
     fy: f32,
+    width: Option<f32>,
+    fx: Option<f32>,
 }
 
 pub fn load_first_preset_for_model(
@@ -64,9 +66,13 @@ impl CameraJson {
         let eye = Vec3::from_array(self.position);
         let fallback_forward = (scene.view_center - eye).normalize_or_zero();
         let forward = self.forward().unwrap_or(fallback_forward);
-        let distance = visible_focus_distance(scene, eye, forward).unwrap_or(scene.view_radius);
+        let right = self.right().unwrap_or(Vec3::X);
+        let down = self.down().unwrap_or(-Vec3::Y);
+        let distance =
+            visible_focus_distance(scene, eye, right, down, forward, self.tan_half_fov())
+                .unwrap_or(scene.view_radius);
         let target = eye + forward * distance;
-        let up = self.up().unwrap_or(Vec3::Y);
+        let up = (-down).normalize_or_zero();
         let fovy_radians = 2.0 * (self.height / (2.0 * self.fy)).atan();
 
         CameraPreset {
@@ -74,6 +80,20 @@ impl CameraJson {
             target,
             up,
             fovy_radians,
+        }
+    }
+
+    fn right(&self) -> Option<Vec3> {
+        let right = Vec3::new(
+            self.rotation[0][0],
+            self.rotation[1][0],
+            self.rotation[2][0],
+        )
+        .normalize_or_zero();
+        if right.length_squared() > 0.0 {
+            Some(right)
+        } else {
+            None
         }
     }
 
@@ -91,33 +111,66 @@ impl CameraJson {
         }
     }
 
-    fn up(&self) -> Option<Vec3> {
-        let camera_down = Vec3::new(
+    fn down(&self) -> Option<Vec3> {
+        let down = Vec3::new(
             self.rotation[0][1],
             self.rotation[1][1],
             self.rotation[2][1],
-        );
-        let up = (-camera_down).normalize_or_zero();
-        if up.length_squared() > 0.0 {
-            Some(up)
+        )
+        .normalize_or_zero();
+        if down.length_squared() > 0.0 {
+            Some(down)
         } else {
             None
         }
     }
+
+    fn tan_half_fov(&self) -> Option<(f32, f32)> {
+        let tan_y = self.height / (2.0 * self.fy);
+        let tan_x = self
+            .width
+            .zip(self.fx)
+            .map(|(width, fx)| width / (2.0 * fx));
+        let tan_x = tan_x.unwrap_or(tan_y);
+        (tan_x.is_finite() && tan_x > 0.0 && tan_y.is_finite() && tan_y > 0.0)
+            .then_some((tan_x, tan_y))
+    }
 }
 
-fn visible_focus_distance(scene: &SplatScene, eye: Vec3, forward: Vec3) -> Option<f32> {
+fn visible_focus_distance(
+    scene: &SplatScene,
+    eye: Vec3,
+    right: Vec3,
+    down: Vec3,
+    forward: Vec3,
+    tan_half_fov: Option<(f32, f32)>,
+) -> Option<f32> {
     let forward = forward.normalize_or_zero();
     if forward.length_squared() == 0.0 {
         return None;
     }
+    let right = right.normalize_or_zero();
+    let down = down.normalize_or_zero();
 
     let mut depths = scene
         .gpu
         .iter()
         .filter_map(|splat| {
-            let depth = (splat.position() - eye).dot(forward);
-            (depth.is_finite() && depth > 0.0).then_some(depth)
+            let delta = splat.position() - eye;
+            let depth = delta.dot(forward);
+            if !depth.is_finite() || depth <= 0.0 {
+                return None;
+            }
+            if let Some((tan_x, tan_y)) = tan_half_fov {
+                let inside_x = right.length_squared() == 0.0
+                    || (delta.dot(right) / depth).abs() <= tan_x * 1.3;
+                let inside_y =
+                    down.length_squared() == 0.0 || (delta.dot(down) / depth).abs() <= tan_y * 1.3;
+                if !inside_x || !inside_y {
+                    return None;
+                }
+            }
+            Some(depth)
         })
         .collect::<Vec<_>>();
     if depths.is_empty() {
@@ -222,7 +275,7 @@ mod tests {
         fs::create_dir_all(&model_dir).unwrap();
         fs::write(
             dir.path().join("train/cameras.json"),
-            r#"[{"position":[0.0,0.0,0.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"height":1000.0,"fy":1000.0}]"#,
+            r#"[{"position":[0.0,0.0,0.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"width":1000.0,"height":1000.0,"fx":1000.0,"fy":1000.0}]"#,
         )
         .unwrap();
         let scene = SplatScene::from_raw(
@@ -240,6 +293,34 @@ mod tests {
                 .unwrap();
 
         assert!((preset.target.z - 4.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn camera_preset_focus_ignores_offscreen_splats() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_dir = dir.path().join("train/point_cloud/iteration_7000");
+        fs::create_dir_all(&model_dir).unwrap();
+        fs::write(
+            dir.path().join("train/cameras.json"),
+            r#"[{"position":[0.0,0.0,0.0],"rotation":[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],"width":1000.0,"height":1000.0,"fx":1000.0,"fy":1000.0}]"#,
+        )
+        .unwrap();
+        let scene = SplatScene::from_raw(
+            vec![
+                sample_raw(Vec3::new(100.0, 0.0, 1.0)),
+                sample_raw(Vec3::new(100.0, 0.0, 2.0)),
+                sample_raw(Vec3::new(100.0, 0.0, 3.0)),
+                sample_raw(Vec3::new(0.0, 0.0, 5.0)),
+            ],
+            "test".into(),
+        );
+
+        let preset =
+            load_first_preset_for_model(Path::new(&model_dir.join("point_cloud.ply")), &scene)
+                .unwrap()
+                .unwrap();
+
+        assert!((preset.target.z - 5.0).abs() < 1e-6);
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {
