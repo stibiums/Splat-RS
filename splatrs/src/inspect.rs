@@ -14,7 +14,7 @@ use crate::{
 const KERNEL_CUTOFF: f32 = 8.0;
 
 pub fn run(args: InspectArgs) -> Result<()> {
-    let scene = loader::load_scene(&args.model, args.max_splats)?;
+    let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
     let f_rest_count = scene.raw.first().map(|raw| raw.f_rest.len()).unwrap_or(0);
     let gpu_bytes = scene.len() * size_of::<GaussianGpu>();
     let raw_bytes = scene.len() * estimated_raw_bytes_per_splat(f_rest_count);

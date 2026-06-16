@@ -22,7 +22,7 @@ const BACKGROUND: [f32; 3] = [0.015, 0.017, 0.02];
 const LABEL_HEIGHT: u32 = 24;
 
 pub fn run(args: RenderArgs) -> Result<()> {
-    let scene = loader::load_scene(&args.model, args.max_splats)?;
+    let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
     let width = args.width.max(1);
     let height = args.height.max(1);
     let camera = make_camera(&args, &scene, width, height);
@@ -47,7 +47,7 @@ pub fn run(args: RenderArgs) -> Result<()> {
 }
 
 pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
-    let scene = loader::load_scene(&args.model, args.max_splats)?;
+    let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
     let tile_width = args.width.max(1);
     let tile_height = args.height.max(1);
     let columns = args.columns.max(1).min(args.camera_indices.len().max(1));

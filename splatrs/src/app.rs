@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub fn run(args: ViewArgs) -> Result<()> {
-    let scene = loader::load_scene(&args.model, args.max_splats)?;
+    let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
     tracing::info!(
         "loaded {} splats from {} (bounds {:?} .. {:?}, file SH degree {}, requested SH degree {})",
         scene.len(),

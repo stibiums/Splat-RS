@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::loader::LoadOptions;
+
 #[derive(Debug, Parser)]
 #[command(name = "splatrs")]
 #[command(about = "Native Rust/wgpu 3D Gaussian Splatting viewer")]
@@ -47,6 +49,27 @@ pub enum RenderBackend {
     CpuTile,
 }
 
+#[derive(Clone, Copy, Debug, Default, Args)]
+pub struct SplatFilterArgs {
+    /// Drop splats with activated opacity below this threshold.
+    #[arg(long)]
+    pub min_opacity: Option<f32>,
+
+    /// Drop splats whose largest activated world-space scale exceeds this value.
+    #[arg(long)]
+    pub max_world_scale: Option<f32>,
+}
+
+impl SplatFilterArgs {
+    pub fn load_options(self, max_splats: Option<usize>) -> LoadOptions {
+        LoadOptions {
+            max_splats,
+            min_opacity: self.min_opacity,
+            max_world_scale: self.max_world_scale,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct ViewArgs {
     /// Path to a GraphDECO-style point_cloud.ply file.
@@ -55,6 +78,9 @@ pub struct ViewArgs {
     /// Keep a deterministic high-importance subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
+
+    #[command(flatten)]
+    pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
     #[arg(long, value_enum, default_value_t = ShDegree::D0)]
@@ -94,6 +120,9 @@ pub struct InspectArgs {
     #[arg(long)]
     pub max_splats: Option<usize>,
 
+    #[command(flatten)]
+    pub filters: SplatFilterArgs,
+
     /// Print projected screen-space radius statistics for this cameras.json index.
     #[arg(long)]
     pub camera_index: Option<usize>,
@@ -127,6 +156,9 @@ pub struct RenderArgs {
     /// Keep a deterministic high-importance subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
+
+    #[command(flatten)]
+    pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
     #[arg(long, value_enum, default_value_t = ShDegree::D0)]
@@ -173,6 +205,9 @@ pub struct ContactSheetArgs {
     /// Keep a deterministic high-importance subset of at most N splats.
     #[arg(long)]
     pub max_splats: Option<usize>,
+
+    #[command(flatten)]
+    pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
     #[arg(long, value_enum, default_value_t = ShDegree::D0)]

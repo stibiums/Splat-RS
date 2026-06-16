@@ -11,6 +11,13 @@ use thiserror::Error;
 
 use crate::scene::{GaussianRaw, SplatScene, sigmoid};
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LoadOptions {
+    pub max_splats: Option<usize>,
+    pub min_opacity: Option<f32>,
+    pub max_world_scale: Option<f32>,
+}
+
 #[derive(Debug, Error)]
 pub enum LoadError {
     #[error("missing required PLY property `{0}`")]
@@ -83,7 +90,7 @@ struct PlyHeader {
     data_start: usize,
 }
 
-pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> {
+pub fn load_scene(path: &Path, options: LoadOptions) -> Result<SplatScene> {
     let mut bytes = Vec::new();
     File::open(path)
         .with_context(|| format!("failed to open {}", path.display()))?
@@ -98,7 +105,9 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
         }
     };
 
-    if let Some(limit) = max_splats {
+    raw = filter_splats(raw, options);
+
+    if let Some(limit) = options.max_splats {
         raw = select_most_important(raw, limit);
     }
 
@@ -107,6 +116,32 @@ pub fn load_scene(path: &Path, max_splats: Option<usize>) -> Result<SplatScene> 
     }
 
     Ok(SplatScene::from_raw(raw, path.display().to_string()))
+}
+
+fn filter_splats(items: Vec<GaussianRaw>, options: LoadOptions) -> Vec<GaussianRaw> {
+    if options.min_opacity.is_none() && options.max_world_scale.is_none() {
+        return items;
+    }
+
+    let min_opacity = options.min_opacity.map(|value| value.clamp(0.0, 1.0));
+    let max_world_scale = options.max_world_scale.map(|value| value.max(0.0));
+    items
+        .into_iter()
+        .filter(|item| {
+            if let Some(min_opacity) = min_opacity {
+                if sigmoid(item.opacity_logit) < min_opacity {
+                    return false;
+                }
+            }
+            if let Some(max_world_scale) = max_world_scale {
+                let max_scale = item.log_scale.exp().max_element();
+                if max_scale > max_world_scale {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect()
 }
 
 fn select_most_important(items: Vec<GaussianRaw>, limit: usize) -> Vec<GaussianRaw> {
@@ -318,7 +353,7 @@ mod tests {
              1 2 3 0 0 0 0 -2 -2 -2 1 0 0 0\n"
         )
         .unwrap();
-        let scene = load_scene(file.path(), None).unwrap();
+        let scene = load_scene(file.path(), LoadOptions::default()).unwrap();
         assert_eq!(scene.len(), 1);
         assert_eq!(scene.raw[0].position, Vec3::new(1.0, 2.0, 3.0));
     }
@@ -342,7 +377,7 @@ mod tests {
             file.write_all(&value.to_le_bytes()).unwrap();
         }
 
-        let scene = load_scene(file.path(), None).unwrap();
+        let scene = load_scene(file.path(), LoadOptions::default()).unwrap();
         assert_eq!(scene.len(), 1);
         assert_eq!(scene.raw[0].position, Vec3::new(1.0, 2.0, 3.0));
     }
@@ -357,7 +392,9 @@ mod tests {
              end_header\n0 0 0\n"
         )
         .unwrap();
-        let error = load_scene(file.path(), None).unwrap_err().to_string();
+        let error = load_scene(file.path(), LoadOptions::default())
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("f_dc_0"));
     }
 
@@ -377,7 +414,14 @@ mod tests {
              1 1 1 0 0 0 0 -2 -2 -2 1 0 0 0\n"
         )
         .unwrap();
-        let scene = load_scene(file.path(), Some(1)).unwrap();
+        let scene = load_scene(
+            file.path(),
+            LoadOptions {
+                max_splats: Some(1),
+                ..LoadOptions::default()
+            },
+        )
+        .unwrap();
         assert_eq!(scene.len(), 1);
     }
 
@@ -410,6 +454,44 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(positions, vec![0.0, 2.0]);
+    }
+
+    #[test]
+    fn filter_splats_drops_low_opacity_gaussians() {
+        let raw = vec![
+            sample_raw(Vec3::ZERO, -8.0, Vec3::splat(-2.0)),
+            sample_raw(Vec3::X, 8.0, Vec3::splat(-2.0)),
+        ];
+
+        let filtered = filter_splats(
+            raw,
+            LoadOptions {
+                min_opacity: Some(0.5),
+                ..LoadOptions::default()
+            },
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].position, Vec3::X);
+    }
+
+    #[test]
+    fn filter_splats_drops_large_world_scale_gaussians() {
+        let raw = vec![
+            sample_raw(Vec3::ZERO, 8.0, Vec3::splat(0.0)),
+            sample_raw(Vec3::X, 8.0, Vec3::splat(-2.0)),
+        ];
+
+        let filtered = filter_splats(
+            raw,
+            LoadOptions {
+                max_world_scale: Some(0.5),
+                ..LoadOptions::default()
+            },
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].position, Vec3::X);
     }
 
     fn sample_raw(position: Vec3, opacity_logit: f32, log_scale: Vec3) -> GaussianRaw {
