@@ -25,6 +25,7 @@ const LABEL_HEIGHT: u32 = 24;
 
 pub fn run(args: RenderArgs) -> Result<()> {
     let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
+    let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
     let width = args.width.max(1);
     let height = args.height.max(1);
     let camera = make_camera(&args, &scene, width, height);
@@ -32,7 +33,7 @@ pub fn run(args: RenderArgs) -> Result<()> {
         point_mode: false,
         opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
-        sh_degree: args.sh_degree.as_u32(),
+        sh_degree,
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
         kernel_cutoff: args.kernel_cutoff.clamp(0.5, 25.0),
         lowpass_pixels: args.lowpass_pixels.clamp(0.0, 16.0),
@@ -63,6 +64,7 @@ pub fn run(args: RenderArgs) -> Result<()> {
 
 pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
     let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
+    let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
     let tile_width = args.width.max(1);
     let tile_height = args.height.max(1);
     let columns = args.columns.max(1).min(args.camera_indices.len().max(1));
@@ -83,7 +85,7 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
         point_mode: false,
         opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
-        sh_degree: args.sh_degree.as_u32(),
+        sh_degree,
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
         kernel_cutoff: args.kernel_cutoff.clamp(0.5, 25.0),
         lowpass_pixels: args.lowpass_pixels.clamp(0.0, 16.0),
@@ -153,7 +155,7 @@ pub fn run_quality_sweep(args: QualitySweepArgs) -> Result<()> {
     let height = args.height.max(1);
     let camera = make_camera_for(&args.model, &scene, args.camera_index, width, height);
     let background = args.background.as_rgb();
-    let sh_degree = args.sh_degree.as_u32();
+    let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
 
     for (index, profile) in quality_profiles(sh_degree).into_iter().enumerate() {
         let options = RenderOptions {

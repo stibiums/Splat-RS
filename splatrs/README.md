@@ -24,12 +24,12 @@ Useful options:
 
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
-cargo run -p splatrs -- view model.ply --sh-degree d3 --camera-index 5
+cargo run -p splatrs -- view model.ply --sh-degree auto --camera-index 5
 cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
 cargo run -p splatrs -- view model.ply --background sky
-cargo run -p splatrs -- render model.ply -o frame.bmp --sh-degree d3 --width 1280 --height 720
+cargo run -p splatrs -- render model.ply -o frame.bmp --width 1280 --height 720
 cargo run -p splatrs -- render model.ply -o cpu-frame.bmp --backend cpu-tile --cpu-sort tile-local --width 640 --height 360
-cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --sh-degree d3 --camera-indices 0,5,10,20
+cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --camera-indices 0,5,10,20
 cargo run -p splatrs -- quality-sweep model.ply -o tuned-frames --max-splats 100000 --camera-index 0
 cargo run -p splatrs -- inspect model.ply --camera-index 5 --width 1280 --height 720
 ```
@@ -40,6 +40,11 @@ models.
 
 When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
 uses `--camera-index` from that file as the initial viewer pose.
+
+`--sh-degree auto` is the default for view, render, contact-sheet, and
+quality-sweep. It evaluates the highest SH degree present in the PLY, capped at
+degree 3. Use `--sh-degree d0` for DC-only debugging or to reproduce older
+low-cost renders.
 
 Quality experiments:
 

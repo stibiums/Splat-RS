@@ -21,14 +21,15 @@ use crate::{
 
 pub fn run(args: ViewArgs) -> Result<()> {
     let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
+    let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
     tracing::info!(
-        "loaded {} splats from {} (bounds {:?} .. {:?}, file SH degree {}, requested SH degree {})",
+        "loaded {} splats from {} (bounds {:?} .. {:?}, file SH degree {}, active SH degree {})",
         scene.len(),
         scene.source_label,
         scene.bounds_min,
         scene.bounds_max,
         scene.detected_sh_degree(),
-        args.sh_degree.as_u32()
+        sh_degree
     );
 
     let event_loop = EventLoop::new()?;
@@ -54,8 +55,9 @@ struct ViewerApp<'window> {
 
 impl<'window> ViewerApp<'window> {
     fn new(args: ViewArgs, scene: SplatScene) -> Self {
+        let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
         let render_options = RenderOptions {
-            sh_degree: args.sh_degree.as_u32(),
+            sh_degree,
             opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
             splat_scale: args.splat_scale.clamp(0.05, 12.0),
             max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),

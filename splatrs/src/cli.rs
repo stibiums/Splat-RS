@@ -29,6 +29,7 @@ pub enum Command {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum ShDegree {
+    Auto,
     D0,
     D1,
     D2,
@@ -36,8 +37,9 @@ pub enum ShDegree {
 }
 
 impl ShDegree {
-    pub fn as_u32(self) -> u32 {
+    pub fn resolve(self, detected_degree: u32) -> u32 {
         match self {
+            Self::Auto => detected_degree.min(3),
             Self::D0 => 0,
             Self::D1 => 1,
             Self::D2 => 2,
@@ -169,7 +171,7 @@ pub struct ViewArgs {
     pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
-    #[arg(long, value_enum, default_value_t = ShDegree::D0)]
+    #[arg(long, value_enum, default_value_t = ShDegree::Auto)]
     pub sh_degree: ShDegree,
 
     /// Initial opacity multiplier.
@@ -295,7 +297,7 @@ pub struct RenderArgs {
     pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
-    #[arg(long, value_enum, default_value_t = ShDegree::D0)]
+    #[arg(long, value_enum, default_value_t = ShDegree::Auto)]
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
@@ -396,7 +398,7 @@ pub struct ContactSheetArgs {
     pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree to evaluate for view-dependent color.
-    #[arg(long, value_enum, default_value_t = ShDegree::D0)]
+    #[arg(long, value_enum, default_value_t = ShDegree::Auto)]
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
@@ -501,7 +503,7 @@ pub struct QualitySweepArgs {
     pub filters: SplatFilterArgs,
 
     /// Spherical harmonics degree used by all non-DC quality profiles.
-    #[arg(long, value_enum, default_value_t = ShDegree::D3)]
+    #[arg(long, value_enum, default_value_t = ShDegree::Auto)]
     pub sh_degree: ShDegree,
 
     /// Background color preset used behind transparent splats.
