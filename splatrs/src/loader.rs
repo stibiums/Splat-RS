@@ -128,10 +128,10 @@ fn filter_splats(items: Vec<GaussianRaw>, options: LoadOptions) -> Vec<GaussianR
     items
         .into_iter()
         .filter(|item| {
-            if let Some(min_opacity) = min_opacity {
-                if sigmoid(item.opacity_logit) < min_opacity {
-                    return false;
-                }
+            if let Some(min_opacity) = min_opacity
+                && sigmoid(item.opacity_logit) < min_opacity
+            {
+                return false;
             }
             if let Some(max_world_scale) = max_world_scale {
                 let max_scale = item.log_scale.exp().max_element();

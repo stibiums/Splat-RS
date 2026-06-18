@@ -106,6 +106,10 @@ impl SplatScene {
         self.gpu.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.gpu.is_empty()
+    }
+
     pub fn detected_sh_degree(&self) -> u32 {
         let Some(first) = self.raw.first() else {
             return 0;
@@ -135,6 +139,7 @@ impl SplatScene {
             .collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn sorted_gpu_for_camera(
         &self,
         view: Mat4,
@@ -145,26 +150,7 @@ impl SplatScene {
         far: f32,
         depth_sort: DepthSort,
     ) -> Vec<GaussianGpu> {
-        let mut visible = self
-            .gpu
-            .iter()
-            .enumerate()
-            .filter_map(|(index, splat)| {
-                let position = splat.position();
-                let view_pos = view.transform_point3(position);
-                let depth = -view_pos.z;
-                let clip = view_proj * position.extend(1.0);
-                if clip.w <= 0.001 {
-                    return None;
-                }
-                let ndc_x = clip.x / clip.w;
-                let ndc_y = clip.y / clip.w;
-                // A splat can still overlap the screen after its center leaves the viewport.
-                let inside_margin =
-                    ndc_x.abs() <= CENTER_CULL_NDC_MARGIN && ndc_y.abs() <= CENTER_CULL_NDC_MARGIN;
-                (depth > near && depth < far && inside_margin).then_some((index, depth))
-            })
-            .collect::<Vec<_>>();
+        let mut visible = self.visible_indices_for_camera(view, view_proj, near, far);
 
         match depth_sort {
             DepthSort::BackToFront => {
@@ -181,6 +167,55 @@ impl SplatScene {
                 let view_dir = (self.gpu[index].position() - eye).normalize_or_zero();
                 let color = sh_to_rgb(raw.f_dc, &raw.f_rest, view_dir, sh_degree);
                 self.gpu[index].with_color(color)
+            })
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn visible_gpu_for_camera(
+        &self,
+        view: Mat4,
+        view_proj: Mat4,
+        eye: Vec3,
+        sh_degree: u32,
+        near: f32,
+        far: f32,
+    ) -> Vec<GaussianGpu> {
+        self.visible_indices_for_camera(view, view_proj, near, far)
+            .into_iter()
+            .map(|(index, _)| {
+                let raw = &self.raw[index];
+                let view_dir = (self.gpu[index].position() - eye).normalize_or_zero();
+                let color = sh_to_rgb(raw.f_dc, &raw.f_rest, view_dir, sh_degree);
+                self.gpu[index].with_color(color)
+            })
+            .collect()
+    }
+
+    fn visible_indices_for_camera(
+        &self,
+        view: Mat4,
+        view_proj: Mat4,
+        near: f32,
+        far: f32,
+    ) -> Vec<(usize, f32)> {
+        self.gpu
+            .iter()
+            .enumerate()
+            .filter_map(|(index, splat)| {
+                let position = splat.position();
+                let view_pos = view.transform_point3(position);
+                let depth = -view_pos.z;
+                let clip = view_proj * position.extend(1.0);
+                if clip.w <= 0.001 {
+                    return None;
+                }
+                let ndc_x = clip.x / clip.w;
+                let ndc_y = clip.y / clip.w;
+                // A splat can still overlap the screen after its center leaves the viewport.
+                let inside_margin =
+                    ndc_x.abs() <= CENTER_CULL_NDC_MARGIN && ndc_y.abs() <= CENTER_CULL_NDC_MARGIN;
+                (depth > near && depth < far && inside_margin).then_some((index, depth))
             })
             .collect()
     }
@@ -273,15 +308,15 @@ pub fn sh_to_rgb(dc: [f32; 3], f_rest: &[f32], dir: Vec3, requested_degree: u32)
     let z = dir.z;
     let mut rgb = [C0 * dc[0], C0 * dc[1], C0 * dc[2]];
 
-    for channel in 0..3 {
+    for (channel, value) in rgb.iter_mut().enumerate() {
         if degree >= 1 {
-            rgb[channel] += -C1 * y * sh_rest(f_rest, rest_per_channel, channel, 1)
+            *value += -C1 * y * sh_rest(f_rest, rest_per_channel, channel, 1)
                 + C1 * z * sh_rest(f_rest, rest_per_channel, channel, 2)
                 - C1 * x * sh_rest(f_rest, rest_per_channel, channel, 3);
         }
 
         if degree >= 2 {
-            rgb[channel] += C2[0] * x * y * sh_rest(f_rest, rest_per_channel, channel, 4)
+            *value += C2[0] * x * y * sh_rest(f_rest, rest_per_channel, channel, 4)
                 + C2[1] * y * z * sh_rest(f_rest, rest_per_channel, channel, 5)
                 + C2[2]
                     * (2.0 * z * z - x * x - y * y)
@@ -291,7 +326,7 @@ pub fn sh_to_rgb(dc: [f32; 3], f_rest: &[f32], dir: Vec3, requested_degree: u32)
         }
 
         if degree >= 3 {
-            rgb[channel] +=
+            *value +=
                 C3[0] * y * (3.0 * x * x - y * y) * sh_rest(f_rest, rest_per_channel, channel, 9)
                     + C3[1] * x * y * z * sh_rest(f_rest, rest_per_channel, channel, 10)
                     + C3[2]
@@ -330,8 +365,10 @@ fn sh_rest(f_rest: &[f32], rest_per_channel: usize, channel: usize, coeff_index:
     if coeff_index == 0 || coeff_index > rest_per_channel {
         return 0.0;
     }
+    // GraphDECO writes f_rest as coeff-major RGB triplets after transpose+flatten.
+    let coeff_offset = coeff_index - 1;
     f_rest
-        .get(channel * rest_per_channel + coeff_index - 1)
+        .get(coeff_offset * 3 + channel)
         .copied()
         .unwrap_or(0.0)
 }
@@ -472,12 +509,24 @@ mod tests {
     #[test]
     fn sh_degree_one_depends_on_view_direction() {
         let mut f_rest = vec![0.0; 9];
-        f_rest[2] = 1.0;
+        f_rest[6] = 1.0;
 
         let positive_x = sh_to_rgb([0.0; 3], &f_rest, Vec3::X, 1).x;
         let negative_x = sh_to_rgb([0.0; 3], &f_rest, -Vec3::X, 1).x;
 
         assert!(negative_x > positive_x);
+    }
+
+    #[test]
+    fn sh_rest_uses_graphdeco_coefficient_major_rgb_layout() {
+        let mut f_rest = vec![0.0; 9];
+        f_rest[4] = 1.0;
+
+        let green_from_z = sh_to_rgb([0.0; 3], &f_rest, Vec3::Z, 1).y;
+        let red_from_z = sh_to_rgb([0.0; 3], &f_rest, Vec3::Z, 1).x;
+
+        assert!(green_from_z > 0.5);
+        assert!((red_from_z - 0.5).abs() < 1e-6);
     }
 
     fn sample_raw(position: Vec3) -> GaussianRaw {

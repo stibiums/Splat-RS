@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{BufWriter, Write},
     path::Path,
     sync::mpsc,
@@ -12,9 +12,12 @@ use winit::dpi::PhysicalSize;
 use crate::{
     camera::Camera,
     cameras,
-    cli::{ContactSheetArgs, RenderArgs, RenderBackend},
+    cli::{ContactSheetArgs, QualitySweepArgs, RenderArgs, RenderBackend},
     cpu_raster, loader,
-    renderer::{RenderOptions, Uniforms, create_splat_pipeline, create_uniform_layout},
+    renderer::{
+        Footprint, RadiusAlpha, RenderOptions, ToneMap, Uniforms, create_splat_pipeline,
+        create_uniform_layout,
+    },
     scene::{DepthSort, SplatScene},
 };
 
@@ -31,7 +34,19 @@ pub fn run(args: RenderArgs) -> Result<()> {
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
         sh_degree: args.sh_degree.as_u32(),
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+        kernel_cutoff: args.kernel_cutoff.clamp(0.5, 25.0),
+        lowpass_pixels: args.lowpass_pixels.clamp(0.0, 16.0),
+        alpha_cutoff: args.alpha_cutoff.clamp(0.0, 1.0),
+        max_alpha: args.max_alpha.clamp(0.0, 1.0),
+        color_max: args.color_max.clamp(0.001, 1024.0),
+        saturation: args.saturation.clamp(0.0, 2.0),
+        footprint: args.footprint.as_renderer(),
+        radius_alpha: args.radius_alpha.as_renderer(),
         background: args.background.as_rgb(),
+        exposure: args.exposure.clamp(0.05, 8.0),
+        tone_map: args.tone_map.as_renderer(),
+        lowpass_alpha_compensation: args.lowpass_alpha_compensation,
+        cpu_sort_mode: args.cpu_sort.as_renderer(),
     };
 
     let pixels = render_headless(&scene, &camera, options, width, height, args.backend)?;
@@ -70,7 +85,19 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
         splat_scale: args.splat_scale.clamp(0.05, 12.0),
         sh_degree: args.sh_degree.as_u32(),
         max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+        kernel_cutoff: args.kernel_cutoff.clamp(0.5, 25.0),
+        lowpass_pixels: args.lowpass_pixels.clamp(0.0, 16.0),
+        alpha_cutoff: args.alpha_cutoff.clamp(0.0, 1.0),
+        max_alpha: args.max_alpha.clamp(0.0, 1.0),
+        color_max: args.color_max.clamp(0.001, 1024.0),
+        saturation: args.saturation.clamp(0.0, 2.0),
+        footprint: args.footprint.as_renderer(),
+        radius_alpha: args.radius_alpha.as_renderer(),
         background: args.background.as_rgb(),
+        exposure: args.exposure.clamp(0.05, 8.0),
+        tone_map: args.tone_map.as_renderer(),
+        lowpass_alpha_compensation: args.lowpass_alpha_compensation,
+        cpu_sort_mode: args.cpu_sort.as_renderer(),
     };
 
     for (tile_index, &camera_index) in args.camera_indices.iter().enumerate() {
@@ -115,6 +142,163 @@ pub fn run_contact_sheet(args: ContactSheetArgs) -> Result<()> {
         args.output.display()
     );
     Ok(())
+}
+
+pub fn run_quality_sweep(args: QualitySweepArgs) -> Result<()> {
+    fs::create_dir_all(&args.output_dir)
+        .with_context(|| format!("failed to create {}", args.output_dir.display()))?;
+
+    let scene = loader::load_scene(&args.model, args.filters.load_options(args.max_splats))?;
+    let width = args.width.max(1);
+    let height = args.height.max(1);
+    let camera = make_camera_for(&args.model, &scene, args.camera_index, width, height);
+    let background = args.background.as_rgb();
+    let sh_degree = args.sh_degree.as_u32();
+
+    for (index, profile) in quality_profiles(sh_degree).into_iter().enumerate() {
+        let options = RenderOptions {
+            point_mode: false,
+            opacity_scale: profile.opacity_scale,
+            splat_scale: profile.splat_scale,
+            sh_degree: profile.sh_degree,
+            max_splat_radius: profile.max_splat_radius,
+            kernel_cutoff: profile.kernel_cutoff,
+            lowpass_pixels: profile.lowpass_pixels,
+            alpha_cutoff: profile.alpha_cutoff,
+            max_alpha: profile.max_alpha,
+            color_max: profile.color_max,
+            saturation: profile.saturation,
+            footprint: profile.footprint,
+            radius_alpha: profile.radius_alpha,
+            background,
+            exposure: profile.exposure,
+            tone_map: profile.tone_map,
+            lowpass_alpha_compensation: false,
+            cpu_sort_mode: args.cpu_sort.as_renderer(),
+        };
+        let output = args
+            .output_dir
+            .join(format!("{index:02}-{}.bmp", profile.name));
+        let pixels = render_headless(&scene, &camera, options, width, height, args.backend)
+            .with_context(|| format!("failed to render quality profile {}", profile.name))?;
+        write_bmp(&output, width, height, &pixels)?;
+        tracing::info!(
+            "rendered quality profile {} to {}",
+            profile.name,
+            output.display()
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug)]
+struct QualityProfile {
+    name: &'static str,
+    opacity_scale: f32,
+    splat_scale: f32,
+    sh_degree: u32,
+    max_splat_radius: f32,
+    kernel_cutoff: f32,
+    lowpass_pixels: f32,
+    alpha_cutoff: f32,
+    max_alpha: f32,
+    color_max: f32,
+    saturation: f32,
+    footprint: Footprint,
+    radius_alpha: RadiusAlpha,
+    exposure: f32,
+    tone_map: ToneMap,
+}
+
+fn quality_profiles(sh_degree: u32) -> [QualityProfile; 5] {
+    [
+        QualityProfile {
+            name: "baseline",
+            opacity_scale: 1.5,
+            splat_scale: 0.4,
+            sh_degree,
+            max_splat_radius: 80.0,
+            kernel_cutoff: 8.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 1.0 / 255.0,
+            max_alpha: 0.99,
+            color_max: 1024.0,
+            saturation: 1.0,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
+            exposure: 1.0,
+            tone_map: ToneMap::None,
+        },
+        QualityProfile {
+            name: "exposure-balanced",
+            opacity_scale: 1.5,
+            splat_scale: 0.35,
+            sh_degree,
+            max_splat_radius: 80.0,
+            kernel_cutoff: 8.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 1.0 / 255.0,
+            max_alpha: 0.99,
+            color_max: 1024.0,
+            saturation: 1.0,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
+            exposure: 0.85,
+            tone_map: ToneMap::None,
+        },
+        QualityProfile {
+            name: "color-clean",
+            opacity_scale: 1.5,
+            splat_scale: 0.4,
+            sh_degree,
+            max_splat_radius: 80.0,
+            kernel_cutoff: 8.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 1.0 / 255.0,
+            max_alpha: 0.99,
+            color_max: 1.5,
+            saturation: 0.85,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
+            exposure: 1.0,
+            tone_map: ToneMap::None,
+        },
+        QualityProfile {
+            name: "alpha-cutoff",
+            opacity_scale: 1.5,
+            splat_scale: 0.4,
+            sh_degree,
+            max_splat_radius: 80.0,
+            kernel_cutoff: 8.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 0.006,
+            max_alpha: 0.99,
+            color_max: 1024.0,
+            saturation: 1.0,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
+            exposure: 1.0,
+            tone_map: ToneMap::None,
+        },
+        QualityProfile {
+            name: "dc-clean",
+            opacity_scale: 1.2,
+            splat_scale: 0.3,
+            sh_degree: 0,
+            max_splat_radius: 60.0,
+            kernel_cutoff: 9.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 0.006,
+            max_alpha: 0.99,
+            color_max: 1.5,
+            saturation: 0.85,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
+            exposure: 1.0,
+            tone_map: ToneMap::Aces,
+        },
+    ]
 }
 
 fn render_headless(
@@ -228,6 +412,7 @@ async fn render_offscreen_gpu(
         label: Some("headless-render-encoder"),
     });
     {
+        let background = options.tone_map.apply(options.background, options.exposure);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("headless-render-pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -235,9 +420,9 @@ async fn render_offscreen_gpu(
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: options.background[0] as f64,
-                        g: options.background[1] as f64,
-                        b: options.background[2] as f64,
+                        r: background[0] as f64,
+                        g: background[1] as f64,
+                        b: background[2] as f64,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,
@@ -331,6 +516,7 @@ fn fill_rgba(pixels: &mut [u8], color: [u8; 4]) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blit_rgba(
     dst: &mut [u8],
     dst_width: u32,

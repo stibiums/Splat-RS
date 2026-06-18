@@ -19,6 +19,7 @@ fn main() -> Result<()> {
         Command::View(args) => app::run(args),
         Command::Render(args) => headless::run(args),
         Command::ContactSheet(args) => headless::run_contact_sheet(args),
+        Command::QualitySweep(args) => headless::run_quality_sweep(args),
         Command::Inspect(args) => inspect::run(args),
     }
 }

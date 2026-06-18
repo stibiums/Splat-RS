@@ -28,7 +28,9 @@ cargo run -p splatrs -- view model.ply --sh-degree d3 --camera-index 5
 cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
 cargo run -p splatrs -- view model.ply --background sky
 cargo run -p splatrs -- render model.ply -o frame.bmp --sh-degree d3 --width 1280 --height 720
+cargo run -p splatrs -- render model.ply -o cpu-frame.bmp --backend cpu-tile --cpu-sort tile-local --width 640 --height 360
 cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --sh-degree d3 --camera-indices 0,5,10,20
+cargo run -p splatrs -- quality-sweep model.ply -o tuned-frames --max-splats 100000 --camera-index 0
 cargo run -p splatrs -- inspect model.ply --camera-index 5 --width 1280 --height 720
 ```
 
@@ -39,6 +41,26 @@ models.
 When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
 uses `--camera-index` from that file as the initial viewer pose.
 
+Quality experiments:
+
+These options are intended for controlled comparisons. The default `axes`,
+`area`, and `1/255` alpha cutoff path is still the safest visual baseline for
+the sample train scene.
+
+- `--footprint axes|covariance`: choose between the original axis-projection
+  footprint and an explicit 3D covariance to 2D covariance projection.
+- `--kernel-cutoff`: controls quad radius and fragment discard radius.
+- `--lowpass-pixels`: controls the screen-space low-pass variance added to each
+  projected footprint.
+- `--radius-alpha area|linear|preserve`: controls how opacity changes when a
+  very large splat is radius-clamped.
+- `--alpha-cutoff` and `--max-alpha`: tune fragment-level alpha rejection and
+  saturation.
+- `--color-max` and `--saturation`: clamp and desaturate evaluated SH colors
+  before exposure/tone mapping; useful for diagnosing colorful SH outliers.
+- `--backend cpu-tile --cpu-sort tile-local`: use the CPU tile renderer with
+  per-tile depth sorting and flat tile bins instead of a full-scene sort.
+
 Controls:
 
 - Left mouse drag: orbit
@@ -46,6 +68,8 @@ Controls:
 - `P`: toggle point/splat mode
 - `O` / `I`: increase/decrease opacity scale
 - `+` / `-`: increase/decrease splat scale
+- `E` / `D`: increase/decrease exposure
+- `T`: cycle display tone mapping
 - `0`-`3`: switch SH degree
 - `R`: reset camera
 - `Esc`: quit

@@ -5,23 +5,44 @@ use glam::{Mat4, Vec2, Vec3, Vec4};
 
 use crate::{
     camera::Camera,
-    renderer::RenderOptions,
+    renderer::{CpuSortMode, Footprint, RadiusAlpha, RenderOptions},
     scene::{DepthSort, GaussianGpu, SplatScene},
 };
 
-const KERNEL_CUTOFF: f32 = 8.0;
 const TILE_SIZE: usize = 16;
-const MIN_ALPHA: f32 = 1.0 / 255.0;
 const TRANSMITTANCE_EPSILON: f32 = 0.0001;
 
 #[derive(Clone, Copy, Debug)]
 struct CpuSplat {
+    depth: f32,
     center_px: Vec2,
     conic: [f32; 3],
     color: [f32; 3],
     opacity: f32,
     bbox_min: [usize; 2],
     bbox_max: [usize; 2],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PixelRenderParams {
+    background: [f32; 3],
+    kernel_cutoff: f32,
+    alpha_cutoff: f32,
+    max_alpha: f32,
+}
+
+#[derive(Debug)]
+struct TileBins {
+    columns: usize,
+    offsets: Vec<usize>,
+    entries: Vec<usize>,
+}
+
+impl TileBins {
+    fn tile(&self, tile_x: usize, tile_y: usize) -> &[usize] {
+        let tile_index = tile_y * self.columns + tile_x;
+        &self.entries[self.offsets[tile_index]..self.offsets[tile_index + 1]]
+    }
 }
 
 pub fn render_tile_cpu(
@@ -33,28 +54,50 @@ pub fn render_tile_cpu(
 ) -> Result<Vec<u8>> {
     let width = width.max(1);
     let height = height.max(1);
-    let sorted = scene.sorted_gpu_for_camera(
-        camera.view(),
-        camera.view_projection(),
-        camera.eye(),
-        options.sh_degree,
-        camera.z_near,
-        camera.z_far,
-        DepthSort::FrontToBack,
-    );
+    let view = camera.view();
+    let view_proj = camera.view_projection();
+    let splats = match options.cpu_sort_mode {
+        CpuSortMode::Global => scene.sorted_gpu_for_camera(
+            view,
+            view_proj,
+            camera.eye(),
+            options.sh_degree,
+            camera.z_near,
+            camera.z_far,
+            DepthSort::FrontToBack,
+        ),
+        CpuSortMode::TileLocal => scene.visible_gpu_for_camera(
+            view,
+            view_proj,
+            camera.eye(),
+            options.sh_degree,
+            camera.z_near,
+            camera.z_far,
+        ),
+    };
 
-    let projected = project_splats(&sorted, camera, options, width, height);
+    let projected = project_splats(&splats, camera, options, width, height);
     let tile_columns = (width as usize).div_ceil(TILE_SIZE);
     let tile_rows = (height as usize).div_ceil(TILE_SIZE);
-    let tiles = bin_splats(&projected, tile_columns, tile_rows);
+    let tiles = bin_splats(
+        &projected,
+        tile_columns,
+        tile_rows,
+        options.cpu_sort_mode == CpuSortMode::TileLocal,
+    );
+    let pixel_params = PixelRenderParams {
+        background: options.tone_map.apply(options.background, options.exposure),
+        kernel_cutoff: options.kernel_cutoff.clamp(0.5, 25.0),
+        alpha_cutoff: options.alpha_cutoff.clamp(0.0, 1.0),
+        max_alpha: options.max_alpha.clamp(0.0, 1.0),
+    };
 
     let mut pixels = vec![0; width as usize * height as usize * 4];
     render_pixels(
         &projected,
         &tiles,
-        tile_columns,
         width as usize,
-        options.background,
+        pixel_params,
         &mut pixels,
     )?;
     Ok(pixels)
@@ -113,45 +156,74 @@ fn project_splat(
     let point_mode = options.point_mode;
     let splat_scale = options.splat_scale;
     let center_view = view * center.extend(1.0);
+    let depth = -center_view.z;
     let (mut cov_xx, mut cov_xy, mut cov_yy) = if point_mode {
         (4.0, 0.0, 4.0)
     } else {
         let axis0 = axis_from(splat.axis0_radius) * splat.axis0_radius[3] * splat_scale;
         let axis1 = axis_from(splat.axis1_radius) * splat.axis1_radius[3] * splat_scale;
         let axis2 = axis_from(splat.axis2_radius) * splat.axis2_radius[3] * splat_scale;
-        let s0 = axis_screen_offset(
-            center_view,
-            axis0,
-            view,
-            focal_x,
-            focal_y,
-            tan_fovx,
-            tan_fovy,
-        );
-        let s1 = axis_screen_offset(
-            center_view,
-            axis1,
-            view,
-            focal_x,
-            focal_y,
-            tan_fovx,
-            tan_fovy,
-        );
-        let s2 = axis_screen_offset(
-            center_view,
-            axis2,
-            view,
-            focal_x,
-            focal_y,
-            tan_fovx,
-            tan_fovy,
-        );
+        let (base_cov_xx, base_cov_xy, base_cov_yy) = match options.footprint {
+            Footprint::Axes => {
+                let s0 = axis_screen_offset(
+                    center_view,
+                    axis0,
+                    view,
+                    focal_x,
+                    focal_y,
+                    tan_fovx,
+                    tan_fovy,
+                );
+                let s1 = axis_screen_offset(
+                    center_view,
+                    axis1,
+                    view,
+                    focal_x,
+                    focal_y,
+                    tan_fovx,
+                    tan_fovy,
+                );
+                let s2 = axis_screen_offset(
+                    center_view,
+                    axis2,
+                    view,
+                    focal_x,
+                    focal_y,
+                    tan_fovx,
+                    tan_fovy,
+                );
+                (
+                    Vec3::new(s0.x, s1.x, s2.x).length_squared(),
+                    Vec3::new(s0.x, s1.x, s2.x).dot(Vec3::new(s0.y, s1.y, s2.y)),
+                    Vec3::new(s0.y, s1.y, s2.y).length_squared(),
+                )
+            }
+            Footprint::Covariance => covariance_screen_footprint(
+                center_view,
+                axis0,
+                axis1,
+                axis2,
+                view,
+                focal_x,
+                focal_y,
+                tan_fovx,
+                tan_fovy,
+            ),
+        };
+        let det_before_lowpass =
+            (base_cov_xx * base_cov_yy - base_cov_xy * base_cov_xy).max(0.0001);
+        let lowpass = options.lowpass_pixels.max(0.0);
+        let cov_xx = base_cov_xx + lowpass;
+        let cov_xy = base_cov_xy;
+        let cov_yy = base_cov_yy + lowpass;
+        if options.lowpass_alpha_compensation {
+            let det_after_lowpass = (cov_xx * cov_yy - cov_xy * cov_xy).max(0.0001);
+            opacity *= (det_before_lowpass / det_after_lowpass)
+                .max(0.000025)
+                .sqrt();
+        }
 
-        (
-            Vec3::new(s0.x, s1.x, s2.x).length_squared() + 0.3,
-            Vec3::new(s0.x, s1.x, s2.x).dot(Vec3::new(s0.y, s1.y, s2.y)),
-            Vec3::new(s0.y, s1.y, s2.y).length_squared() + 0.3,
-        )
+        (cov_xx, cov_xy, cov_yy)
     };
 
     let max_quad_radius = if point_mode {
@@ -165,13 +237,17 @@ fn project_splat(
     cov_xx *= covariance_scale;
     cov_xy *= covariance_scale;
     cov_yy *= covariance_scale;
-    opacity *= covariance_scale * covariance_scale;
-    if opacity < MIN_ALPHA {
+    match options.radius_alpha {
+        RadiusAlpha::Area => opacity *= covariance_scale * covariance_scale,
+        RadiusAlpha::Linear => opacity *= covariance_scale,
+        RadiusAlpha::Preserve => {}
+    }
+    if opacity < options.alpha_cutoff.clamp(0.0, 1.0) {
         return None;
     }
 
     let max_eigen = max_eigen(cov_xx, cov_xy, cov_yy).max(1.0);
-    let quad_radius = (KERNEL_CUTOFF * max_eigen)
+    let quad_radius = (options.kernel_cutoff.clamp(0.5, 25.0) * max_eigen)
         .sqrt()
         .clamp(2.0, max_quad_radius);
     let det = (cov_xx * cov_yy - cov_xy * cov_xy).max(0.0001);
@@ -191,9 +267,15 @@ fn project_splat(
     }
 
     Some(CpuSplat {
+        depth,
         center_px,
         conic: [cov_yy / det, -cov_xy / det, cov_xx / det],
-        color: [splat.color[0], splat.color[1], splat.color[2]],
+        color: options.tone_map.apply_color(
+            [splat.color[0], splat.color[1], splat.color[2]],
+            options.exposure,
+            options.color_max,
+            options.saturation,
+        ),
         opacity,
         bbox_min: [min_x, min_y],
         bbox_max: [max_x, max_y],
@@ -209,8 +291,29 @@ fn axis_screen_offset(
     tan_fovx: f32,
     tan_fovy: f32,
 ) -> Vec2 {
+    axis_screen_offset_from_camera(
+        center_view,
+        axis_camera(axis_world, view),
+        focal_x,
+        focal_y,
+        tan_fovx,
+        tan_fovy,
+    )
+}
+
+fn axis_camera(axis_world: Vec3, view: Mat4) -> Vec3 {
     let axis_view = view * axis_world.extend(0.0);
-    let axis_cam = Vec3::new(axis_view.x, axis_view.y, -axis_view.z);
+    Vec3::new(axis_view.x, axis_view.y, -axis_view.z)
+}
+
+fn axis_screen_offset_from_camera(
+    center_view: Vec4,
+    axis_cam: Vec3,
+    focal_x: f32,
+    focal_y: f32,
+    tan_fovx: f32,
+    tan_fovy: f32,
+) -> Vec2 {
     let z = (-center_view.z).max(0.001);
     let x = (center_view.x / z).clamp(-1.3 * tan_fovx, 1.3 * tan_fovx) * z;
     let y = (center_view.y / z).clamp(-1.3 * tan_fovy, 1.3 * tan_fovy) * z;
@@ -221,28 +324,123 @@ fn axis_screen_offset(
     )
 }
 
-fn bin_splats(splats: &[CpuSplat], tile_columns: usize, tile_rows: usize) -> Vec<Vec<usize>> {
-    let mut tiles = vec![Vec::new(); tile_columns * tile_rows];
-    for (index, splat) in splats.iter().enumerate() {
-        let min_tile_x = splat.bbox_min[0] / TILE_SIZE;
-        let min_tile_y = splat.bbox_min[1] / TILE_SIZE;
-        let max_tile_x = (splat.bbox_max[0] - 1) / TILE_SIZE;
-        let max_tile_y = (splat.bbox_max[1] - 1) / TILE_SIZE;
-        for tile_y in min_tile_y..=max_tile_y.min(tile_rows - 1) {
-            for tile_x in min_tile_x..=max_tile_x.min(tile_columns - 1) {
-                tiles[tile_y * tile_columns + tile_x].push(index);
+#[allow(clippy::too_many_arguments)]
+fn covariance_screen_footprint(
+    center_view: Vec4,
+    axis0_world: Vec3,
+    axis1_world: Vec3,
+    axis2_world: Vec3,
+    view: Mat4,
+    focal_x: f32,
+    focal_y: f32,
+    tan_fovx: f32,
+    tan_fovy: f32,
+) -> (f32, f32, f32) {
+    let axis0 = axis_camera(axis0_world, view);
+    let axis1 = axis_camera(axis1_world, view);
+    let axis2 = axis_camera(axis2_world, view);
+    let cov00 = axis0.x * axis0.x + axis1.x * axis1.x + axis2.x * axis2.x;
+    let cov01 = axis0.x * axis0.y + axis1.x * axis1.y + axis2.x * axis2.y;
+    let cov02 = axis0.x * axis0.z + axis1.x * axis1.z + axis2.x * axis2.z;
+    let cov11 = axis0.y * axis0.y + axis1.y * axis1.y + axis2.y * axis2.y;
+    let cov12 = axis0.y * axis0.z + axis1.y * axis1.z + axis2.y * axis2.z;
+    let cov22 = axis0.z * axis0.z + axis1.z * axis1.z + axis2.z * axis2.z;
+    let mul_cov = |value: Vec3| {
+        Vec3::new(
+            cov00 * value.x + cov01 * value.y + cov02 * value.z,
+            cov01 * value.x + cov11 * value.y + cov12 * value.z,
+            cov02 * value.x + cov12 * value.y + cov22 * value.z,
+        )
+    };
+
+    let z = (-center_view.z).max(0.001);
+    let x = (center_view.x / z).clamp(-1.3 * tan_fovx, 1.3 * tan_fovx) * z;
+    let y = (center_view.y / z).clamp(-1.3 * tan_fovy, 1.3 * tan_fovy) * z;
+    let inv_z = 1.0 / z;
+    let inv_z2 = inv_z * inv_z;
+    let jac_x = Vec3::new(focal_x * inv_z, 0.0, -focal_x * x * inv_z2);
+    let jac_y = Vec3::new(0.0, focal_y * inv_z, -focal_y * y * inv_z2);
+
+    (
+        jac_x.dot(mul_cov(jac_x)),
+        jac_x.dot(mul_cov(jac_y)),
+        jac_y.dot(mul_cov(jac_y)),
+    )
+}
+
+fn bin_splats(
+    splats: &[CpuSplat],
+    tile_columns: usize,
+    tile_rows: usize,
+    sort_tiles_front_to_back: bool,
+) -> TileBins {
+    let tile_count = tile_columns * tile_rows;
+    let mut counts = vec![0usize; tile_count];
+    for splat in splats {
+        let (min_tile_x, max_tile_x, min_tile_y, max_tile_y) =
+            splat_tile_bounds(splat, tile_columns, tile_rows);
+        for tile_y in min_tile_y..=max_tile_y {
+            for tile_x in min_tile_x..=max_tile_x {
+                counts[tile_y * tile_columns + tile_x] += 1;
             }
         }
     }
-    tiles
+
+    let mut offsets = vec![0usize; tile_count + 1];
+    for tile_index in 0..tile_count {
+        offsets[tile_index + 1] = offsets[tile_index] + counts[tile_index];
+    }
+    let mut cursors = offsets[..tile_count].to_vec();
+    let mut entries = vec![0usize; offsets[tile_count]];
+    for (index, splat) in splats.iter().enumerate() {
+        let (min_tile_x, max_tile_x, min_tile_y, max_tile_y) =
+            splat_tile_bounds(splat, tile_columns, tile_rows);
+        for tile_y in min_tile_y..=max_tile_y {
+            for tile_x in min_tile_x..=max_tile_x {
+                let tile_index = tile_y * tile_columns + tile_x;
+                let entry_index = cursors[tile_index];
+                entries[entry_index] = index;
+                cursors[tile_index] += 1;
+            }
+        }
+    }
+
+    if sort_tiles_front_to_back {
+        for tile_index in 0..tile_count {
+            let range = offsets[tile_index]..offsets[tile_index + 1];
+            entries[range].sort_unstable_by(|&a, &b| splats[a].depth.total_cmp(&splats[b].depth));
+        }
+    }
+
+    TileBins {
+        columns: tile_columns,
+        offsets,
+        entries,
+    }
+}
+
+fn splat_tile_bounds(
+    splat: &CpuSplat,
+    tile_columns: usize,
+    tile_rows: usize,
+) -> (usize, usize, usize, usize) {
+    let min_tile_x = splat.bbox_min[0] / TILE_SIZE;
+    let min_tile_y = splat.bbox_min[1] / TILE_SIZE;
+    let max_tile_x = (splat.bbox_max[0] - 1) / TILE_SIZE;
+    let max_tile_y = (splat.bbox_max[1] - 1) / TILE_SIZE;
+    (
+        min_tile_x.min(tile_columns - 1),
+        max_tile_x.min(tile_columns - 1),
+        min_tile_y.min(tile_rows - 1),
+        max_tile_y.min(tile_rows - 1),
+    )
 }
 
 fn render_pixels(
     splats: &[CpuSplat],
-    tiles: &[Vec<usize>],
-    tile_columns: usize,
+    tiles: &TileBins,
     width: usize,
-    background: [f32; 3],
+    params: PixelRenderParams,
     pixels: &mut [u8],
 ) -> Result<()> {
     let row_bytes = width * 4;
@@ -256,15 +454,7 @@ fn render_pixels(
         for (worker_index, chunk) in pixels.chunks_mut(rows_per_worker * row_bytes).enumerate() {
             let start_y = worker_index * rows_per_worker;
             scope.spawn(move || {
-                render_row_chunk(
-                    splats,
-                    tiles,
-                    tile_columns,
-                    width,
-                    start_y,
-                    background,
-                    chunk,
-                );
+                render_row_chunk(splats, tiles, width, start_y, params, chunk);
             });
         }
     });
@@ -274,11 +464,10 @@ fn render_pixels(
 
 fn render_row_chunk(
     splats: &[CpuSplat],
-    tiles: &[Vec<usize>],
-    tile_columns: usize,
+    tiles: &TileBins,
     width: usize,
     start_y: usize,
-    background: [f32; 3],
+    params: PixelRenderParams,
     pixels: &mut [u8],
 ) {
     let row_bytes = width * 4;
@@ -288,8 +477,8 @@ fn render_row_chunk(
         let tile_y = y / TILE_SIZE;
         for x in 0..width {
             let tile_x = x / TILE_SIZE;
-            let tile = &tiles[tile_y * tile_columns + tile_x];
-            let color = render_pixel(splats, tile, x as f32 + 0.5, y as f32 + 0.5, background);
+            let tile = tiles.tile(tile_x, tile_y);
+            let color = render_pixel(splats, tile, x as f32 + 0.5, y as f32 + 0.5, params);
             let offset = local_y * row_bytes + x * 4;
             pixels[offset] = (linear_to_srgb(color[0]) * 255.0).round() as u8;
             pixels[offset + 1] = (linear_to_srgb(color[1]) * 255.0).round() as u8;
@@ -304,7 +493,7 @@ fn render_pixel(
     tile: &[usize],
     pixel_x: f32,
     pixel_y: f32,
-    background: [f32; 3],
+    params: PixelRenderParams,
 ) -> [f32; 3] {
     let mut transmittance = 1.0;
     let mut color = [0.0; 3];
@@ -323,12 +512,12 @@ fn render_pixel(
         let dy = splat.center_px.y - pixel_y;
         let q =
             splat.conic[0] * dx * dx + 2.0 * splat.conic[1] * dx * dy + splat.conic[2] * dy * dy;
-        if q > KERNEL_CUTOFF {
+        if q > params.kernel_cutoff {
             continue;
         }
 
-        let alpha = (splat.opacity * (-0.5 * q).exp()).min(0.99);
-        if alpha < MIN_ALPHA {
+        let alpha = (splat.opacity * (-0.5 * q).exp()).min(params.max_alpha);
+        if alpha < params.alpha_cutoff {
             continue;
         }
 
@@ -337,16 +526,16 @@ fn render_pixel(
             break;
         }
 
-        for channel in 0..3 {
-            color[channel] += splat.color[channel] * alpha * transmittance;
+        for (channel, value) in color.iter_mut().enumerate() {
+            *value += splat.color[channel] * alpha * transmittance;
         }
         transmittance = next_transmittance;
     }
 
     [
-        (color[0] + transmittance * background[0]).clamp(0.0, 1.0),
-        (color[1] + transmittance * background[1]).clamp(0.0, 1.0),
-        (color[2] + transmittance * background[2]).clamp(0.0, 1.0),
+        (color[0] + transmittance * params.background[0]).clamp(0.0, 1.0),
+        (color[1] + transmittance * params.background[1]).clamp(0.0, 1.0),
+        (color[2] + transmittance * params.background[2]).clamp(0.0, 1.0),
     ]
 }
 
@@ -372,6 +561,7 @@ fn linear_to_srgb(value: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::renderer::CpuSortMode;
     use crate::scene::{GaussianRaw, SplatScene};
 
     #[test]
@@ -404,5 +594,48 @@ mod tests {
         assert_eq!(linear_to_srgb(0.0), 0.0);
         assert!((linear_to_srgb(1.0) - 1.0).abs() < 1e-6);
         assert!(linear_to_srgb(0.5) > 0.5);
+    }
+
+    #[test]
+    fn tile_local_sort_matches_global_sort_for_stable_depths() {
+        let raw = vec![
+            sample_raw(Vec3::new(-0.1, 0.0, -2.0), [2.0, 0.0, 0.0]),
+            sample_raw(Vec3::new(0.1, 0.0, -3.0), [0.0, 2.0, 0.0]),
+            sample_raw(Vec3::new(0.0, 0.1, -4.0), [0.0, 0.0, 2.0]),
+        ];
+        let scene = SplatScene::from_raw(raw, "test".into());
+        let camera = Camera::from_eye_target_up(
+            Vec3::ZERO,
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::Y,
+            1.0,
+            1.0,
+            60.0_f32.to_radians(),
+        );
+        let mut global_options = RenderOptions {
+            cpu_sort_mode: CpuSortMode::Global,
+            ..RenderOptions::default()
+        };
+        global_options.sh_degree = 0;
+        let tile_options = RenderOptions {
+            cpu_sort_mode: CpuSortMode::TileLocal,
+            ..global_options
+        };
+
+        let global = render_tile_cpu(&scene, &camera, global_options, 64, 64).unwrap();
+        let tile_local = render_tile_cpu(&scene, &camera, tile_options, 64, 64).unwrap();
+
+        assert_eq!(global, tile_local);
+    }
+
+    fn sample_raw(position: Vec3, f_dc: [f32; 3]) -> GaussianRaw {
+        GaussianRaw {
+            position,
+            f_dc,
+            f_rest: Vec::new(),
+            opacity_logit: 4.0,
+            log_scale: Vec3::splat(-1.2),
+            rotation_raw: Vec4::new(1.0, 0.0, 0.0, 0.0),
+        }
     }
 }

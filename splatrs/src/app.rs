@@ -15,7 +15,7 @@ use crate::{
     cameras,
     cli::ViewArgs,
     loader,
-    renderer::{RenderOptions, Renderer},
+    renderer::{RenderOptions, Renderer, ToneMap},
     scene::SplatScene,
 };
 
@@ -54,12 +54,25 @@ struct ViewerApp<'window> {
 
 impl<'window> ViewerApp<'window> {
     fn new(args: ViewArgs, scene: SplatScene) -> Self {
-        let mut render_options = RenderOptions::default();
-        render_options.sh_degree = args.sh_degree.as_u32();
-        render_options.opacity_scale = args.opacity_scale.clamp(0.05, 8.0);
-        render_options.splat_scale = args.splat_scale.clamp(0.05, 12.0);
-        render_options.max_splat_radius = args.max_splat_radius.clamp(2.0, 1024.0);
-        render_options.background = args.background.as_rgb();
+        let render_options = RenderOptions {
+            sh_degree: args.sh_degree.as_u32(),
+            opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
+            splat_scale: args.splat_scale.clamp(0.05, 12.0),
+            max_splat_radius: args.max_splat_radius.clamp(2.0, 1024.0),
+            kernel_cutoff: args.kernel_cutoff.clamp(0.5, 25.0),
+            lowpass_pixels: args.lowpass_pixels.clamp(0.0, 16.0),
+            alpha_cutoff: args.alpha_cutoff.clamp(0.0, 1.0),
+            max_alpha: args.max_alpha.clamp(0.0, 1.0),
+            color_max: args.color_max.clamp(0.001, 1024.0),
+            saturation: args.saturation.clamp(0.0, 2.0),
+            footprint: args.footprint.as_renderer(),
+            radius_alpha: args.radius_alpha.as_renderer(),
+            background: args.background.as_rgb(),
+            exposure: args.exposure.clamp(0.05, 8.0),
+            tone_map: args.tone_map.as_renderer(),
+            lowpass_alpha_compensation: args.lowpass_alpha_compensation,
+            ..RenderOptions::default()
+        };
 
         Self {
             args,
@@ -94,7 +107,7 @@ impl<'window> ViewerApp<'window> {
 
         if let Some(fps) = self.frame_counter.tick() {
             window.set_title(&format!(
-                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - radius {:.0}px - SH d{} - {}",
+                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - radius {:.0}px - exposure {:.2} - {:?} - SH d{} - {}",
                 self.scene.len(),
                 fps,
                 if self.render_options.point_mode {
@@ -105,6 +118,8 @@ impl<'window> ViewerApp<'window> {
                 self.render_options.opacity_scale,
                 self.render_options.splat_scale,
                 self.render_options.max_splat_radius,
+                self.render_options.exposure,
+                self.render_options.tone_map,
                 self.render_options.sh_degree,
                 self.scene.source_label,
             ));
@@ -195,6 +210,21 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                         self.render_options.max_splat_radius =
                             (self.render_options.max_splat_radius / 1.15).max(2.0);
                     }
+                    PhysicalKey::Code(KeyCode::KeyE) => {
+                        self.render_options.exposure =
+                            (self.render_options.exposure * 1.15).min(8.0);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyD) => {
+                        self.render_options.exposure =
+                            (self.render_options.exposure / 1.15).max(0.05);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyT) => {
+                        self.render_options.tone_map = match self.render_options.tone_map {
+                            ToneMap::None => ToneMap::Reinhard,
+                            ToneMap::Reinhard => ToneMap::Aces,
+                            ToneMap::Aces => ToneMap::None,
+                        };
+                    }
                     PhysicalKey::Code(KeyCode::KeyR) => {
                         if let Some(window) = self.window {
                             let size = window.inner_size();
@@ -226,7 +256,11 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                     _ => {}
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } if button == MouseButton::Left => {
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.dragging = state == ElementState::Pressed;
                 if !self.dragging {
                     self.last_cursor = None;

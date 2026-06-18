@@ -17,6 +17,10 @@ pub(crate) struct Uniforms {
     viewport: [f32; 4],
     focal: [f32; 4],
     options: [f32; 4],
+    post: [f32; 4],
+    quality: [f32; 4],
+    alpha: [f32; 4],
+    color: [f32; 4],
 }
 
 impl Uniforms {
@@ -37,8 +41,140 @@ impl Uniforms {
                 options.splat_scale,
                 options.max_splat_radius,
             ],
+            post: [
+                options.exposure,
+                options.tone_map.shader_value(),
+                if options.lowpass_alpha_compensation {
+                    1.0
+                } else {
+                    0.0
+                },
+                0.0,
+            ],
+            quality: [
+                options.footprint.shader_value(),
+                options.lowpass_pixels,
+                options.kernel_cutoff,
+                options.radius_alpha.shader_value(),
+            ],
+            alpha: [options.alpha_cutoff, options.max_alpha, 0.0, 0.0],
+            color: [options.color_max, options.saturation, 0.0, 0.0],
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Footprint {
+    #[default]
+    Axes,
+    Covariance,
+}
+
+impl Footprint {
+    fn shader_value(self) -> f32 {
+        match self {
+            Self::Axes => 0.0,
+            Self::Covariance => 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RadiusAlpha {
+    #[default]
+    Area,
+    Linear,
+    Preserve,
+}
+
+impl RadiusAlpha {
+    fn shader_value(self) -> f32 {
+        match self {
+            Self::Area => 0.0,
+            Self::Linear => 1.0,
+            Self::Preserve => 2.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CpuSortMode {
+    Global,
+    #[default]
+    TileLocal,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ToneMap {
+    #[default]
+    None,
+    Reinhard,
+    Aces,
+}
+
+impl ToneMap {
+    fn shader_value(self) -> f32 {
+        match self {
+            Self::None => 0.0,
+            Self::Reinhard => 1.0,
+            Self::Aces => 2.0,
+        }
+    }
+
+    pub fn apply(self, color: [f32; 3], exposure: f32) -> [f32; 3] {
+        let exposed = [
+            (color[0] * exposure).max(0.0),
+            (color[1] * exposure).max(0.0),
+            (color[2] * exposure).max(0.0),
+        ];
+        match self {
+            Self::None => exposed,
+            Self::Reinhard => [
+                exposed[0] / (1.0 + exposed[0]),
+                exposed[1] / (1.0 + exposed[1]),
+                exposed[2] / (1.0 + exposed[2]),
+            ],
+            Self::Aces => [
+                aces_tonemap(exposed[0]),
+                aces_tonemap(exposed[1]),
+                aces_tonemap(exposed[2]),
+            ],
+        }
+    }
+
+    pub fn apply_color(
+        self,
+        color: [f32; 3],
+        exposure: f32,
+        color_max: f32,
+        saturation: f32,
+    ) -> [f32; 3] {
+        let color_max = color_max.max(0.001);
+        let saturation = saturation.clamp(0.0, 2.0);
+        let clamped = [
+            color[0].clamp(0.0, color_max),
+            color[1].clamp(0.0, color_max),
+            color[2].clamp(0.0, color_max),
+        ];
+        let luma = clamped[0] * 0.2126 + clamped[1] * 0.7152 + clamped[2] * 0.0722;
+        self.apply(
+            [
+                luma + (clamped[0] - luma) * saturation,
+                luma + (clamped[1] - luma) * saturation,
+                luma + (clamped[2] - luma) * saturation,
+            ],
+            exposure,
+        )
+    }
+}
+
+fn aces_tonemap(value: f32) -> f32 {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    ((value * (a * value + b)) / (value * (c * value + d) + e)).clamp(0.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -48,7 +184,19 @@ pub struct RenderOptions {
     pub splat_scale: f32,
     pub sh_degree: u32,
     pub max_splat_radius: f32,
+    pub kernel_cutoff: f32,
+    pub lowpass_pixels: f32,
+    pub alpha_cutoff: f32,
+    pub max_alpha: f32,
+    pub color_max: f32,
+    pub saturation: f32,
+    pub footprint: Footprint,
+    pub radius_alpha: RadiusAlpha,
     pub background: [f32; 3],
+    pub exposure: f32,
+    pub tone_map: ToneMap,
+    pub lowpass_alpha_compensation: bool,
+    pub cpu_sort_mode: CpuSortMode,
 }
 
 impl Default for RenderOptions {
@@ -59,7 +207,19 @@ impl Default for RenderOptions {
             splat_scale: 0.4,
             sh_degree: 0,
             max_splat_radius: 80.0,
+            kernel_cutoff: 8.0,
+            lowpass_pixels: 0.3,
+            alpha_cutoff: 1.0 / 255.0,
+            max_alpha: 0.99,
+            color_max: 1024.0,
+            saturation: 1.0,
+            footprint: Footprint::Axes,
+            radius_alpha: RadiusAlpha::Area,
             background: [0.015, 0.017, 0.02],
+            exposure: 1.0,
+            tone_map: ToneMap::None,
+            lowpass_alpha_compensation: false,
+            cpu_sort_mode: CpuSortMode::TileLocal,
         }
     }
 }
@@ -234,6 +394,7 @@ impl<'window> Renderer<'window> {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let background = options.tone_map.apply(options.background, options.exposure);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -247,9 +408,9 @@ impl<'window> Renderer<'window> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: options.background[0] as f64,
-                            g: options.background[1] as f64,
-                            b: options.background[2] as f64,
+                            r: background[0] as f64,
+                            g: background[1] as f64,
+                            b: background[2] as f64,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
