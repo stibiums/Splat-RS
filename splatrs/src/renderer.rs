@@ -234,6 +234,8 @@ pub enum SortRequest {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RenderStats {
     pub sorted: bool,
+    pub drawn_instances: usize,
+    pub full_instances: usize,
 }
 
 pub struct Renderer<'window> {
@@ -247,9 +249,13 @@ pub struct Renderer<'window> {
     uniform_bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
+    interactive_instance_buffer: wgpu::Buffer,
+    interactive_instance_capacity: usize,
+    interactive_max_splats: usize,
     last_sort: Instant,
     sort_interval: std::time::Duration,
     sorted_instances: Vec<GaussianGpu>,
+    interactive_instances: Vec<GaussianGpu>,
 }
 
 impl<'window> Renderer<'window> {
@@ -258,6 +264,7 @@ impl<'window> Renderer<'window> {
         scene: &SplatScene,
         camera: &Camera,
         sort_interval: std::time::Duration,
+        interactive_max_splats: usize,
     ) -> Result<Self> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -348,6 +355,14 @@ impl<'window> Renderer<'window> {
             contents: bytemuck::cast_slice(&sorted_instances),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
+        let interactive_instances =
+            decimate_preserving_order(&sorted_instances, interactive_max_splats);
+        let interactive_instance_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("interactive-instance-buffer"),
+                contents: bytemuck::cast_slice(&interactive_instances),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            });
 
         Ok(Self {
             surface,
@@ -360,9 +375,13 @@ impl<'window> Renderer<'window> {
             uniform_bind_group,
             instance_buffer,
             instance_capacity: sorted_instances.len(),
+            interactive_instance_buffer,
+            interactive_instance_capacity: interactive_instances.len(),
+            interactive_max_splats,
             last_sort: Instant::now(),
             sort_interval,
             sorted_instances,
+            interactive_instances,
         })
     }
 
@@ -407,6 +426,7 @@ impl<'window> Renderer<'window> {
             );
             self.last_sort = Instant::now();
             self.upload_instances();
+            self.update_interactive_instances();
             sorted = true;
         }
 
@@ -414,10 +434,22 @@ impl<'window> Renderer<'window> {
             Ok(frame) => frame,
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 self.surface.configure(&self.device, &self.config);
-                return Ok(RenderStats { sorted });
+                return Ok(self.stats(sorted, sort_request));
             }
-            Err(wgpu::SurfaceError::Timeout) => return Ok(RenderStats { sorted }),
+            Err(wgpu::SurfaceError::Timeout) => return Ok(self.stats(sorted, sort_request)),
             Err(wgpu::SurfaceError::OutOfMemory) => anyhow::bail!("wgpu surface ran out of memory"),
+        };
+        let use_interactive_lod = sort_request == SortRequest::Throttled
+            && self.interactive_instances.len() < self.sorted_instances.len();
+        let draw_instances = if use_interactive_lod {
+            &self.interactive_instances
+        } else {
+            &self.sorted_instances
+        };
+        let draw_buffer = if use_interactive_lod {
+            &self.interactive_instance_buffer
+        } else {
+            &self.instance_buffer
         };
         let view = frame
             .texture
@@ -450,12 +482,16 @@ impl<'window> Renderer<'window> {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-            pass.draw(0..4, 0..self.sorted_instances.len() as u32);
+            pass.set_vertex_buffer(0, draw_buffer.slice(..));
+            pass.draw(0..4, 0..draw_instances.len() as u32);
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-        Ok(RenderStats { sorted })
+        Ok(RenderStats {
+            sorted,
+            drawn_instances: draw_instances.len(),
+            full_instances: self.sorted_instances.len(),
+        })
     }
 
     fn upload_instances(&mut self) {
@@ -476,6 +512,55 @@ impl<'window> Renderer<'window> {
             );
         }
     }
+
+    fn update_interactive_instances(&mut self) {
+        self.interactive_instances =
+            decimate_preserving_order(&self.sorted_instances, self.interactive_max_splats);
+        if self.interactive_instances.len() > self.interactive_instance_capacity {
+            self.interactive_instance_capacity = self.interactive_instances.len();
+            self.interactive_instance_buffer =
+                self.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("interactive-instance-buffer"),
+                        contents: bytemuck::cast_slice(&self.interactive_instances),
+                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    });
+        } else {
+            self.queue.write_buffer(
+                &self.interactive_instance_buffer,
+                0,
+                bytemuck::cast_slice(&self.interactive_instances),
+            );
+        }
+    }
+
+    fn stats(&self, sorted: bool, sort_request: SortRequest) -> RenderStats {
+        let use_interactive_lod = sort_request == SortRequest::Throttled
+            && self.interactive_instances.len() < self.sorted_instances.len();
+        RenderStats {
+            sorted,
+            drawn_instances: if use_interactive_lod {
+                self.interactive_instances.len()
+            } else {
+                self.sorted_instances.len()
+            },
+            full_instances: self.sorted_instances.len(),
+        }
+    }
+}
+
+fn decimate_preserving_order(items: &[GaussianGpu], max_items: usize) -> Vec<GaussianGpu> {
+    if max_items == 0 || max_items >= items.len() {
+        return items.to_vec();
+    }
+
+    let len = items.len();
+    let mut selected = Vec::with_capacity(max_items);
+    for sample_index in 0..max_items {
+        let index = ((sample_index * 2 + 1) * len) / (max_items * 2);
+        selected.push(items[index.min(len - 1)]);
+    }
+    selected
 }
 
 pub(crate) fn create_uniform_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -571,8 +656,42 @@ pub(crate) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn shader_parses_as_wgsl() {
         naga::front::wgsl::parse_str(include_str!("shader.wgsl")).unwrap();
+    }
+
+    #[test]
+    fn decimation_preserves_order_and_limit() {
+        let items = (0..10).map(sample_gpu).collect::<Vec<_>>();
+
+        let decimated = decimate_preserving_order(&items, 4);
+        let positions = decimated
+            .iter()
+            .map(|splat| splat.position_opacity[0] as i32)
+            .collect::<Vec<_>>();
+
+        assert_eq!(positions, vec![1, 3, 6, 8]);
+    }
+
+    #[test]
+    fn zero_decimation_limit_keeps_full_quality() {
+        let items = (0..5).map(sample_gpu).collect::<Vec<_>>();
+
+        let decimated = decimate_preserving_order(&items, 0);
+
+        assert_eq!(decimated.len(), items.len());
+    }
+
+    fn sample_gpu(index: i32) -> GaussianGpu {
+        GaussianGpu {
+            position_opacity: [index as f32, 0.0, 0.0, 1.0],
+            color: [1.0, 1.0, 1.0, 1.0],
+            axis0_radius: [1.0, 0.0, 0.0, 1.0],
+            axis1_radius: [0.0, 1.0, 0.0, 1.0],
+            axis2_radius: [0.0, 0.0, 1.0, 1.0],
+        }
     }
 }

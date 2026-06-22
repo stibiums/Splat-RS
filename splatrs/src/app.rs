@@ -50,12 +50,14 @@ struct ViewerApp<'window> {
     dragging: bool,
     last_cursor: Option<PhysicalPosition<f64>>,
     sort_request: SortRequest,
+    last_drawn_instances: usize,
     frame_counter: FrameCounter,
 }
 
 impl<'window> ViewerApp<'window> {
     fn new(args: ViewArgs, scene: SplatScene) -> Self {
         let sh_degree = args.sh_degree.resolve(scene.detected_sh_degree());
+        let initial_splat_count = scene.len();
         let render_options = RenderOptions {
             sh_degree,
             opacity_scale: args.opacity_scale.clamp(0.05, 8.0),
@@ -88,6 +90,7 @@ impl<'window> ViewerApp<'window> {
             dragging: false,
             last_cursor: None,
             sort_request: SortRequest::Immediate,
+            last_drawn_instances: initial_splat_count,
             frame_counter: FrameCounter::default(),
         }
     }
@@ -101,6 +104,7 @@ impl<'window> ViewerApp<'window> {
 
         match renderer.render(&self.scene, camera, self.render_options, self.sort_request) {
             Ok(stats) => {
+                self.last_drawn_instances = stats.drawn_instances;
                 if stats.sorted || self.sort_request == SortRequest::Immediate {
                     self.sort_request = SortRequest::None;
                 }
@@ -113,7 +117,8 @@ impl<'window> ViewerApp<'window> {
 
         if let Some(fps) = self.frame_counter.tick() {
             window.set_title(&format!(
-                "SplatRS - {} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - radius {:.0}px - exposure {:.2} - {:?} - SH d{} - {}",
+                "SplatRS - {}/{} splats - {:.1} FPS - {} - opacity {:.2} - scale {:.2} - radius {:.0}px - exposure {:.2} - {:?} - SH d{} - {}",
+                self.last_drawn_instances,
                 self.scene.len(),
                 fps,
                 if self.render_options.point_mode {
@@ -154,6 +159,7 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
             &self.scene,
             &camera,
             Duration::from_millis(self.args.sort_interval_ms),
+            self.args.interactive_max_splats,
         ))
         .expect("failed to initialize renderer");
 

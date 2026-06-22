@@ -29,6 +29,7 @@ cargo run -p splatrs -- view model.ply --sh-degree auto --camera-index 5
 cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
 cargo run -p splatrs -- view model.ply --background sky
 cargo run -p splatrs -- view model.ply --sort-interval-ms 120
+cargo run -p splatrs -- view model.ply --interactive-max-splats 150000
 cargo run -p splatrs -- render model.ply -o frame.bmp --width 1280 --height 720
 cargo run -p splatrs -- render model.ply -o cpu-frame.bmp --backend cpu-tile --cpu-sort tile-local --width 640 --height 360
 cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --camera-indices 0,5,10,20
@@ -43,6 +44,9 @@ models.
 `--sort-interval-ms` trades interaction smoothness for exact transparency
 ordering while orbiting or zooming. Higher values reduce CPU sorting and GPU
 buffer uploads during camera motion; `0` restores immediate resorting.
+`--interactive-max-splats` additionally caps the number of splats drawn while
+orbiting or zooming. The viewer returns to full quality after interaction; `0`
+disables this interaction LOD.
 
 When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
 uses `--camera-index` from that file as the initial viewer pose.

@@ -249,6 +249,10 @@ pub struct ViewArgs {
     /// Minimum milliseconds between CPU depth resort/upload while interacting.
     #[arg(long, default_value_t = 80)]
     pub sort_interval_ms: u64,
+
+    /// Maximum splats drawn while orbiting or zooming. Set 0 to disable interaction LOD.
+    #[arg(long, default_value_t = 200_000)]
+    pub interactive_max_splats: usize,
 }
 
 #[derive(Debug, Args)]
