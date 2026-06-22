@@ -245,6 +245,10 @@ pub struct ViewArgs {
     /// Initial window height.
     #[arg(long, default_value_t = 720)]
     pub height: u32,
+
+    /// Minimum milliseconds between CPU depth resort/upload while interacting.
+    #[arg(long, default_value_t = 80)]
+    pub sort_interval_ms: u64,
 }
 
 #[derive(Debug, Args)]

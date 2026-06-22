@@ -15,7 +15,7 @@ use crate::{
     cameras,
     cli::ViewArgs,
     loader,
-    renderer::{RenderOptions, Renderer, ToneMap},
+    renderer::{RenderOptions, Renderer, SortRequest, ToneMap},
     scene::SplatScene,
 };
 
@@ -49,7 +49,7 @@ struct ViewerApp<'window> {
     render_options: RenderOptions,
     dragging: bool,
     last_cursor: Option<PhysicalPosition<f64>>,
-    force_sort: bool,
+    sort_request: SortRequest,
     frame_counter: FrameCounter,
 }
 
@@ -87,7 +87,7 @@ impl<'window> ViewerApp<'window> {
             render_options,
             dragging: false,
             last_cursor: None,
-            force_sort: true,
+            sort_request: SortRequest::Immediate,
             frame_counter: FrameCounter::default(),
         }
     }
@@ -99,13 +99,17 @@ impl<'window> ViewerApp<'window> {
             return;
         };
 
-        if let Err(error) =
-            renderer.render(&self.scene, camera, self.render_options, self.force_sort)
-        {
-            tracing::error!("{error:#}");
-            window.set_title(&format!("SplatRS - render error: {error}"));
+        match renderer.render(&self.scene, camera, self.render_options, self.sort_request) {
+            Ok(stats) => {
+                if stats.sorted || self.sort_request == SortRequest::Immediate {
+                    self.sort_request = SortRequest::None;
+                }
+            }
+            Err(error) => {
+                tracing::error!("{error:#}");
+                window.set_title(&format!("SplatRS - render error: {error}"));
+            }
         }
-        self.force_sort = false;
 
         if let Some(fps) = self.frame_counter.tick() {
             window.set_title(&format!(
@@ -145,15 +149,20 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
         let window: &'static Window = Box::leak(Box::new(window));
         let size = window.inner_size();
         let camera = self.make_initial_camera(size.width, size.height);
-        let renderer = pollster::block_on(Renderer::new(window, &self.scene, &camera))
-            .expect("failed to initialize renderer");
+        let renderer = pollster::block_on(Renderer::new(
+            window,
+            &self.scene,
+            &camera,
+            Duration::from_millis(self.args.sort_interval_ms),
+        ))
+        .expect("failed to initialize renderer");
 
         self.window = Some(window);
         self.window_id = Some(window_id);
         self.initial_camera = Some(camera);
         self.camera = Some(camera);
         self.renderer = Some(renderer);
-        self.force_sort = true;
+        self.sort_request = SortRequest::Immediate;
     }
 
     fn window_event(
@@ -176,7 +185,7 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                 if let Some(camera) = self.camera.as_mut() {
                     camera.resize(size.width, size.height);
                 }
-                self.force_sort = true;
+                self.sort_request = SortRequest::Immediate;
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.physical_key {
@@ -236,24 +245,24 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                             if let Some(camera) = self.camera.as_mut() {
                                 *camera = next_camera;
                             }
-                            self.force_sort = true;
+                            self.sort_request = SortRequest::Immediate;
                         }
                     }
                     PhysicalKey::Code(KeyCode::Digit0) | PhysicalKey::Code(KeyCode::Numpad0) => {
                         self.render_options.sh_degree = 0;
-                        self.force_sort = true;
+                        self.sort_request = SortRequest::Immediate;
                     }
                     PhysicalKey::Code(KeyCode::Digit1) | PhysicalKey::Code(KeyCode::Numpad1) => {
                         self.render_options.sh_degree = 1;
-                        self.force_sort = true;
+                        self.sort_request = SortRequest::Immediate;
                     }
                     PhysicalKey::Code(KeyCode::Digit2) | PhysicalKey::Code(KeyCode::Numpad2) => {
                         self.render_options.sh_degree = 2;
-                        self.force_sort = true;
+                        self.sort_request = SortRequest::Immediate;
                     }
                     PhysicalKey::Code(KeyCode::Digit3) | PhysicalKey::Code(KeyCode::Numpad3) => {
                         self.render_options.sh_degree = 3;
-                        self.force_sort = true;
+                        self.sort_request = SortRequest::Immediate;
                     }
                     _ => {}
                 }
@@ -263,9 +272,13 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                 button: MouseButton::Left,
                 ..
             } => {
+                let was_dragging = self.dragging;
                 self.dragging = state == ElementState::Pressed;
                 if !self.dragging {
                     self.last_cursor = None;
+                    if was_dragging {
+                        self.sort_request = SortRequest::Immediate;
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -276,7 +289,7 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                             (position.x - previous.x) as f32,
                             (position.y - previous.y) as f32,
                         );
-                        self.force_sort = true;
+                        self.sort_request = SortRequest::Throttled;
                     }
                     self.last_cursor = Some(position);
                 }
@@ -288,7 +301,7 @@ impl<'window> ApplicationHandler for ViewerApp<'window> {
                 };
                 if let Some(camera) = self.camera.as_mut() {
                     camera.zoom(scroll);
-                    self.force_sort = true;
+                    self.sort_request = SortRequest::Throttled;
                 }
             }
             _ => {}

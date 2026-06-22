@@ -224,6 +224,18 @@ impl Default for RenderOptions {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SortRequest {
+    None,
+    Throttled,
+    Immediate,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RenderStats {
+    pub sorted: bool,
+}
+
 pub struct Renderer<'window> {
     surface: wgpu::Surface<'window>,
     device: wgpu::Device,
@@ -236,11 +248,17 @@ pub struct Renderer<'window> {
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     last_sort: Instant,
+    sort_interval: std::time::Duration,
     sorted_instances: Vec<GaussianGpu>,
 }
 
 impl<'window> Renderer<'window> {
-    pub async fn new(window: &'window Window, scene: &SplatScene, camera: &Camera) -> Result<Self> {
+    pub async fn new(
+        window: &'window Window,
+        scene: &SplatScene,
+        camera: &Camera,
+        sort_interval: std::time::Duration,
+    ) -> Result<Self> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
         let surface = instance
@@ -343,6 +361,7 @@ impl<'window> Renderer<'window> {
             instance_buffer,
             instance_capacity: sorted_instances.len(),
             last_sort: Instant::now(),
+            sort_interval,
             sorted_instances,
         })
     }
@@ -362,13 +381,21 @@ impl<'window> Renderer<'window> {
         scene: &SplatScene,
         camera: &Camera,
         options: RenderOptions,
-        force_sort: bool,
-    ) -> Result<()> {
+        sort_request: SortRequest,
+    ) -> Result<RenderStats> {
         let uniforms = Uniforms::new(camera, self.size, options);
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
-        if force_sort || self.last_sort.elapsed().as_millis() > 66 {
+        let sort_due =
+            self.sort_interval.is_zero() || self.last_sort.elapsed() >= self.sort_interval;
+        let should_sort = match sort_request {
+            SortRequest::None => false,
+            SortRequest::Throttled => sort_due,
+            SortRequest::Immediate => true,
+        };
+        let mut sorted = false;
+        if should_sort {
             self.sorted_instances = scene.sorted_gpu_for_camera(
                 camera.view(),
                 camera.view_projection(),
@@ -380,15 +407,16 @@ impl<'window> Renderer<'window> {
             );
             self.last_sort = Instant::now();
             self.upload_instances();
+            sorted = true;
         }
 
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 self.surface.configure(&self.device, &self.config);
-                return Ok(());
+                return Ok(RenderStats { sorted });
             }
-            Err(wgpu::SurfaceError::Timeout) => return Ok(()),
+            Err(wgpu::SurfaceError::Timeout) => return Ok(RenderStats { sorted }),
             Err(wgpu::SurfaceError::OutOfMemory) => anyhow::bail!("wgpu surface ran out of memory"),
         };
         let view = frame
@@ -427,7 +455,7 @@ impl<'window> Renderer<'window> {
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-        Ok(())
+        Ok(RenderStats { sorted })
     }
 
     fn upload_instances(&mut self) {

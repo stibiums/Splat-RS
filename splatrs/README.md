@@ -8,7 +8,8 @@ The first version focuses on readability and course-project scope:
 - load official 3DGS PLY files
 - apply scale, opacity, and quaternion activations
 - keep the most visually important splats when `--max-splats` is used
-- CPU-sort splats front-to-back each frame for transmittance blending
+- CPU-sort splats front-to-back for transmittance blending, with throttled
+  resorting while interacting
 - evaluate SH degree 0-3 color on the CPU
 - render instanced screen-space elliptical splats with wgpu
 - orbit camera controls and simple keyboard toggles
@@ -27,6 +28,7 @@ cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height
 cargo run -p splatrs -- view model.ply --sh-degree auto --camera-index 5
 cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
 cargo run -p splatrs -- view model.ply --background sky
+cargo run -p splatrs -- view model.ply --sort-interval-ms 120
 cargo run -p splatrs -- render model.ply -o frame.bmp --width 1280 --height 720
 cargo run -p splatrs -- render model.ply -o cpu-frame.bmp --backend cpu-tile --cpu-sort tile-local --width 640 --height 360
 cargo run -p splatrs -- contact-sheet model.ply -o cameras.bmp --camera-indices 0,5,10,20
@@ -37,6 +39,10 @@ cargo run -p splatrs -- inspect model.ply --camera-index 5 --width 1280 --height
 `--max-splats` takes a deterministic high-importance subset of the PLY instead
 of the first N rows, which preserves most visible content for large official
 models.
+
+`--sort-interval-ms` trades interaction smoothness for exact transparency
+ordering while orbiting or zooming. Higher values reduce CPU sorting and GPU
+buffer uploads during camera motion; `0` restores immediate resorting.
 
 When a `cameras.json` file is found in an ancestor directory of the PLY, SplatRS
 uses `--camera-index` from that file as the initial viewer pose.
