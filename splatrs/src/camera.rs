@@ -97,7 +97,7 @@ impl Camera {
 
     pub fn orbit(&mut self, delta_x: f32, delta_y: f32) {
         self.yaw -= delta_x * 0.006;
-        self.pitch = (self.pitch - delta_y * 0.006).clamp(-1.45, 1.45);
+        self.pitch = (self.pitch + delta_y * 0.006).clamp(-1.45, 1.45);
     }
 
     pub fn zoom(&mut self, scroll_delta: f32) {
@@ -165,5 +165,21 @@ mod tests {
 
         assert!(camera.eye().y.abs() < 1e-5);
         assert_eq!(camera.up, -Vec3::Y);
+    }
+
+    #[test]
+    fn positive_vertical_drag_increases_pitch() {
+        let mut camera = Camera::from_eye_target_up(
+            Vec3::new(0.0, 0.0, 4.0),
+            Vec3::ZERO,
+            Vec3::Y,
+            10.0,
+            1.0,
+            0.8,
+        );
+
+        camera.orbit(0.0, 10.0);
+
+        assert!(camera.eye().y > 0.0);
     }
 }
