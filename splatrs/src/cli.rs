@@ -199,7 +199,7 @@ pub struct ViewArgs {
     pub lowpass_pixels: f32,
 
     /// Fragment alpha threshold below which splat samples are discarded.
-    #[arg(long, default_value_t = 1.0 / 255.0)]
+    #[arg(long, default_value_t = 0.006)]
     pub alpha_cutoff: f32,
 
     /// Maximum per-fragment alpha after Gaussian falloff.
@@ -207,11 +207,11 @@ pub struct ViewArgs {
     pub max_alpha: f32,
 
     /// Clamp evaluated SH color channels before exposure/tone mapping.
-    #[arg(long, default_value_t = 1024.0)]
+    #[arg(long, default_value_t = 2.0)]
     pub color_max: f32,
 
     /// Saturation multiplier applied before exposure/tone mapping.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 1.05)]
     pub saturation: f32,
 
     /// Opacity policy used after a very large footprint is radius-clamped.
@@ -219,11 +219,11 @@ pub struct ViewArgs {
     pub radius_alpha: RadiusAlphaArg,
 
     /// Background color preset used behind transparent splats.
-    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    #[arg(long, value_enum, default_value_t = Background::Sky)]
     pub background: Background,
 
     /// Linear exposure multiplier applied before display.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 0.9)]
     pub exposure: f32,
 
     /// Display tone mapping curve used to compress bright SH colors.
@@ -333,7 +333,7 @@ pub struct RenderArgs {
     pub lowpass_pixels: f32,
 
     /// Fragment alpha threshold below which splat samples are discarded.
-    #[arg(long, default_value_t = 1.0 / 255.0)]
+    #[arg(long, default_value_t = 0.006)]
     pub alpha_cutoff: f32,
 
     /// Maximum per-fragment alpha after Gaussian falloff.
@@ -341,11 +341,11 @@ pub struct RenderArgs {
     pub max_alpha: f32,
 
     /// Clamp evaluated SH color channels before exposure/tone mapping.
-    #[arg(long, default_value_t = 1024.0)]
+    #[arg(long, default_value_t = 2.0)]
     pub color_max: f32,
 
     /// Saturation multiplier applied before exposure/tone mapping.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 1.05)]
     pub saturation: f32,
 
     /// Opacity policy used after a very large footprint is radius-clamped.
@@ -353,11 +353,11 @@ pub struct RenderArgs {
     pub radius_alpha: RadiusAlphaArg,
 
     /// Background color preset used behind transparent splats.
-    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    #[arg(long, value_enum, default_value_t = Background::Sky)]
     pub background: Background,
 
     /// Linear exposure multiplier applied before display.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 0.9)]
     pub exposure: f32,
 
     /// Display tone mapping curve used to compress bright SH colors.
@@ -434,7 +434,7 @@ pub struct ContactSheetArgs {
     pub lowpass_pixels: f32,
 
     /// Fragment alpha threshold below which splat samples are discarded.
-    #[arg(long, default_value_t = 1.0 / 255.0)]
+    #[arg(long, default_value_t = 0.006)]
     pub alpha_cutoff: f32,
 
     /// Maximum per-fragment alpha after Gaussian falloff.
@@ -442,11 +442,11 @@ pub struct ContactSheetArgs {
     pub max_alpha: f32,
 
     /// Clamp evaluated SH color channels before exposure/tone mapping.
-    #[arg(long, default_value_t = 1024.0)]
+    #[arg(long, default_value_t = 2.0)]
     pub color_max: f32,
 
     /// Saturation multiplier applied before exposure/tone mapping.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 1.05)]
     pub saturation: f32,
 
     /// Opacity policy used after a very large footprint is radius-clamped.
@@ -454,11 +454,11 @@ pub struct ContactSheetArgs {
     pub radius_alpha: RadiusAlphaArg,
 
     /// Background color preset used behind transparent splats.
-    #[arg(long, value_enum, default_value_t = Background::Dark)]
+    #[arg(long, value_enum, default_value_t = Background::Sky)]
     pub background: Background,
 
     /// Linear exposure multiplier applied before display.
-    #[arg(long, default_value_t = 1.0)]
+    #[arg(long, default_value_t = 0.9)]
     pub exposure: f32,
 
     /// Display tone mapping curve used to compress bright SH colors.

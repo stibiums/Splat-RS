@@ -27,7 +27,7 @@ Useful options:
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
 cargo run -p splatrs -- view model.ply --sh-degree auto --camera-index 5
 cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
-cargo run -p splatrs -- view model.ply --background sky
+cargo run -p splatrs -- view model.ply --background sky --exposure 0.9 --saturation 1.05
 cargo run -p splatrs -- view model.ply --sort-interval-ms 120
 cargo run -p splatrs -- view model.ply --interactive-max-splats 150000
 cargo run -p splatrs -- render model.ply -o frame.bmp --width 1280 --height 720
@@ -56,11 +56,18 @@ quality-sweep. It evaluates the highest SH degree present in the PLY, capped at
 degree 3. Use `--sh-degree d0` for DC-only debugging or to reproduce older
 low-cost renders.
 
+The default display settings use a sky background, a small exposure reduction,
+mild saturation lift, SH color clamping, and a slightly higher alpha cutoff.
+Keeping the background close to the outdoor capture avoids gray/black patches in
+thin sky regions, while the exposure and color clamps reduce the older
+blue-white wash. Use `--exposure 1.0 --saturation 1.0 --color-max 1024
+--alpha-cutoff 0.003921569` to reproduce the older raw-looking preview.
+
 Quality experiments:
 
-These options are intended for controlled comparisons. The default `axes`,
-`area`, and `1/255` alpha cutoff path is still the safest visual baseline for
-the sample train scene.
+These options are intended for controlled comparisons. The `quality-sweep`
+command now writes a `balanced` profile for normal viewing and a `raw-linear`
+profile for reproducing the older unclamped, low-alpha preview behavior.
 
 - `--footprint axes|covariance`: choose between the original axis-projection
   footprint and an explicit 3D covariance to 2D covariance projection.
