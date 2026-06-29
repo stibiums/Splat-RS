@@ -194,6 +194,28 @@ pub fn run_quality_sweep(args: QualitySweepArgs) -> Result<()> {
     Ok(())
 }
 
+pub fn render_scene_to_bmp(
+    scene: &SplatScene,
+    camera: &Camera,
+    options: RenderOptions,
+    width: u32,
+    height: u32,
+    backend: RenderBackend,
+    output: &Path,
+) -> Result<()> {
+    let width = width.max(1);
+    let height = height.max(1);
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let pixels = render_headless(scene, camera, options, width, height, backend)?;
+    write_bmp(output, width, height, &pixels)
+}
+
 #[derive(Clone, Copy, Debug)]
 struct QualityProfile {
     name: &'static str,

@@ -177,7 +177,7 @@ fn aces_tonemap(value: f32) -> f32 {
     ((value * (a * value + b)) / (value * (c * value + d) + e)).clamp(0.0, 1.0)
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RenderOptions {
     pub point_mode: bool,
     pub opacity_scale: f32,
@@ -395,6 +395,14 @@ impl<'window> Renderer<'window> {
         self.surface.configure(&self.device, &self.config);
     }
 
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    pub fn output_format(&self) -> wgpu::TextureFormat {
+        self.config.format
+    }
+
     pub fn render(
         &mut self,
         scene: &SplatScene,
@@ -402,6 +410,26 @@ impl<'window> Renderer<'window> {
         options: RenderOptions,
         sort_request: SortRequest,
     ) -> Result<RenderStats> {
+        self.render_with_overlay(scene, camera, options, sort_request, |_, _, _, _, _| {})
+    }
+
+    pub fn render_with_overlay<F>(
+        &mut self,
+        scene: &SplatScene,
+        camera: &Camera,
+        options: RenderOptions,
+        sort_request: SortRequest,
+        overlay: F,
+    ) -> Result<RenderStats>
+    where
+        F: FnOnce(
+            &wgpu::Device,
+            &wgpu::Queue,
+            &mut wgpu::CommandEncoder,
+            &wgpu::TextureView,
+            PhysicalSize<u32>,
+        ),
+    {
         let uniforms = Uniforms::new(camera, self.size, options);
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
@@ -485,6 +513,7 @@ impl<'window> Renderer<'window> {
             pass.set_vertex_buffer(0, draw_buffer.slice(..));
             pass.draw(0..4, 0..draw_instances.len() as u32);
         }
+        overlay(&self.device, &self.queue, &mut encoder, &view, self.size);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
         Ok(RenderStats {

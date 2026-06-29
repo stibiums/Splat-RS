@@ -21,3 +21,8 @@ captures/
 *.tar.gz
 *.tgz
 !splatrs/examples/*.ply
+
+# Local report drafts and rendered report artifacts.
+paper/
+SplatRS_report.pdf
+docs/report_draft.md

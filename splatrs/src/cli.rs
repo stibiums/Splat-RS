@@ -161,6 +161,7 @@ impl SplatFilterArgs {
 #[derive(Debug, Args)]
 pub struct ViewArgs {
     /// Path to a GraphDECO-style point_cloud.ply file.
+    #[arg(default_value = "models/train/point_cloud/iteration_7000/point_cloud.ply")]
     pub model: PathBuf,
 
     /// Keep a deterministic high-importance subset of at most N splats.
@@ -235,7 +236,7 @@ pub struct ViewArgs {
     pub lowpass_alpha_compensation: bool,
 
     /// Zero-based camera index from cameras.json to use as the initial view.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 5)]
     pub camera_index: usize,
 
     /// Initial window width.
@@ -247,11 +248,11 @@ pub struct ViewArgs {
     pub height: u32,
 
     /// Minimum milliseconds between CPU depth resort/upload while interacting.
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, default_value_t = 120)]
     pub sort_interval_ms: u64,
 
     /// Maximum splats drawn while orbiting or zooming. Set 0 to disable interaction LOD.
-    #[arg(long, default_value_t = 200_000)]
+    #[arg(long, default_value_t = 150_000)]
     pub interactive_max_splats: usize,
 }
 
