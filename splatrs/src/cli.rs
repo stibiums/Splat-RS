@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::loader::LoadOptions;
-use crate::renderer::{CpuSortMode, Footprint, RadiusAlpha, ToneMap};
+use crate::renderer::{
+    CpuSortMode, DEFAULT_MAX_SPLAT_RADIUS, DEFAULT_OPACITY_SCALE, DEFAULT_SPLAT_SCALE, Footprint,
+    RadiusAlpha, ToneMap,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "splatrs")]
@@ -176,15 +179,15 @@ pub struct ViewArgs {
     pub sh_degree: ShDegree,
 
     /// Initial opacity multiplier.
-    #[arg(long, default_value_t = 1.5)]
+    #[arg(long, default_value_t = DEFAULT_OPACITY_SCALE)]
     pub opacity_scale: f32,
 
     /// Initial splat radius multiplier.
-    #[arg(long, default_value_t = 0.4)]
+    #[arg(long, default_value_t = DEFAULT_SPLAT_SCALE)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 80.0)]
+    #[arg(long, default_value_t = DEFAULT_MAX_SPLAT_RADIUS)]
     pub max_splat_radius: f32,
 
     /// Screen-space footprint projection mode.
@@ -281,11 +284,11 @@ pub struct InspectArgs {
     pub height: u32,
 
     /// Splat radius multiplier used for projected radius statistics.
-    #[arg(long, default_value_t = 0.4)]
+    #[arg(long, default_value_t = DEFAULT_SPLAT_SCALE)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels for projected statistics.
-    #[arg(long, default_value_t = 80.0)]
+    #[arg(long, default_value_t = DEFAULT_MAX_SPLAT_RADIUS)]
     pub max_splat_radius: f32,
 }
 
@@ -310,15 +313,15 @@ pub struct RenderArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.5)]
+    #[arg(long, default_value_t = DEFAULT_OPACITY_SCALE)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.4)]
+    #[arg(long, default_value_t = DEFAULT_SPLAT_SCALE)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 80.0)]
+    #[arg(long, default_value_t = DEFAULT_MAX_SPLAT_RADIUS)]
     pub max_splat_radius: f32,
 
     /// Screen-space footprint projection mode.
@@ -411,15 +414,15 @@ pub struct ContactSheetArgs {
     pub sh_degree: ShDegree,
 
     /// Opacity multiplier.
-    #[arg(long, default_value_t = 1.5)]
+    #[arg(long, default_value_t = DEFAULT_OPACITY_SCALE)]
     pub opacity_scale: f32,
 
     /// Splat radius multiplier.
-    #[arg(long, default_value_t = 0.4)]
+    #[arg(long, default_value_t = DEFAULT_SPLAT_SCALE)]
     pub splat_scale: f32,
 
     /// Maximum screen-space splat quad radius in pixels.
-    #[arg(long, default_value_t = 80.0)]
+    #[arg(long, default_value_t = DEFAULT_MAX_SPLAT_RADIUS)]
     pub max_splat_radius: f32,
 
     /// Screen-space footprint projection mode.

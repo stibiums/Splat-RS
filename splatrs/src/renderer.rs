@@ -199,14 +199,18 @@ pub struct RenderOptions {
     pub cpu_sort_mode: CpuSortMode,
 }
 
+pub const DEFAULT_OPACITY_SCALE: f32 = 8.0;
+pub const DEFAULT_SPLAT_SCALE: f32 = 0.7;
+pub const DEFAULT_MAX_SPLAT_RADIUS: f32 = 240.0;
+
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
             point_mode: false,
-            opacity_scale: 1.5,
-            splat_scale: 0.4,
+            opacity_scale: DEFAULT_OPACITY_SCALE,
+            splat_scale: DEFAULT_SPLAT_SCALE,
             sh_degree: 0,
-            max_splat_radius: 80.0,
+            max_splat_radius: DEFAULT_MAX_SPLAT_RADIUS,
             kernel_cutoff: 8.0,
             lowpass_pixels: 0.3,
             alpha_cutoff: 0.006,
@@ -401,6 +405,21 @@ impl<'window> Renderer<'window> {
 
     pub fn output_format(&self) -> wgpu::TextureFormat {
         self.config.format
+    }
+
+    pub fn replace_scene(&mut self, scene: &SplatScene, camera: &Camera, sh_degree: u32) {
+        self.sorted_instances = scene.sorted_gpu_for_camera(
+            camera.view(),
+            camera.view_projection(),
+            camera.eye(),
+            sh_degree,
+            camera.z_near,
+            camera.z_far,
+            DepthSort::BackToFront,
+        );
+        self.upload_instances();
+        self.update_interactive_instances();
+        self.last_sort = Instant::now();
     }
 
     pub fn render(

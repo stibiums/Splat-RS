@@ -705,21 +705,25 @@ impl<'window> ViewerApp<'window> {
     fn rebuild_renderer_for_current_scene(&mut self, window: &'window Window) -> Result<()> {
         let size = window.inner_size();
         let camera = self.make_initial_camera(size.width, size.height);
-        let renderer = pollster::block_on(Renderer::new(
-            window,
-            &self.scene,
-            &camera,
-            Duration::from_millis(self.args.sort_interval_ms),
-            self.args.interactive_max_splats,
-        ))
-        .context("failed to initialize renderer for the selected scene")?;
-        let egui_renderer =
-            EguiRenderer::new(renderer.device(), renderer.output_format(), None, 1, false);
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.replace_scene(&self.scene, &camera, self.render_options.sh_degree);
+        } else {
+            let renderer = pollster::block_on(Renderer::new(
+                window,
+                &self.scene,
+                &camera,
+                Duration::from_millis(self.args.sort_interval_ms),
+                self.args.interactive_max_splats,
+            ))
+            .context("failed to initialize renderer for the selected scene")?;
+            let egui_renderer =
+                EguiRenderer::new(renderer.device(), renderer.output_format(), None, 1, false);
+            self.egui_renderer = Some(egui_renderer);
+            self.renderer = Some(renderer);
+        }
 
         self.initial_camera = Some(camera);
         self.camera = Some(camera);
-        self.renderer = Some(renderer);
-        self.egui_renderer = Some(egui_renderer);
         self.dragging = false;
         self.last_cursor = None;
         self.last_drawn_instances = self.scene.len();

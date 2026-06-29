@@ -22,18 +22,19 @@ cargo run -p splatrs -- view path/to/point_cloud.ply
 cargo run -p splatrs -- inspect path/to/point_cloud.ply
 ```
 
-Running `view` without a model opens the bundled course-project demo scene at
-`models/train/point_cloud/iteration_7000/point_cloud.ply`. The viewer defaults
-to camera index 5, sky background, display-balanced color settings, throttled
-sorting, and interaction LOD; scene selection, camera index, screenshots, and
-display parameters can then be adjusted from the UI.
+Running `view` without a model opens the local course-project demo scene at
+`models/train/point_cloud/iteration_7000/point_cloud.ply` if that ignored asset
+directory has been unpacked. The viewer defaults to camera index 5, sky
+background, display-balanced color settings, throttled sorting, and interaction
+LOD; scene selection, camera index, screenshots, and display parameters can then
+be adjusted from the UI.
 
 Useful options:
 
 ```sh
 cargo run -p splatrs -- view model.ply --max-splats 100000 --width 1280 --height 720
 cargo run -p splatrs -- view model.ply --sh-degree auto --camera-index 5
-cargo run -p splatrs -- view model.ply --splat-scale 0.4 --opacity-scale 1.5 --max-splat-radius 80
+cargo run -p splatrs -- view model.ply --splat-scale 0.7 --opacity-scale 8.0 --max-splat-radius 240
 cargo run -p splatrs -- view model.ply --background sky --exposure 0.9 --saturation 1.05
 cargo run -p splatrs -- view model.ply --sort-interval-ms 160
 cargo run -p splatrs -- view model.ply --interactive-max-splats 100000
