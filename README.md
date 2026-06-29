@@ -89,14 +89,3 @@ cargo test -p splatrs
 37 passed; 0 failed
 ```
 
-## Git 中不包含的内容
-
-以下内容属于本地资产或生成结果，不提交到 Git：
-
-- `models/` 和 `models.zip` 等下载模型包。
-- `target/` 编译产物和渲染中间图。
-- `screenshots/` 截图输出。
-- `paper/`、`SplatRS_report.pdf` 和其他报告编译产物。
-- `docs/` 中的本地草稿或过程记录。
-
-最终提交仓库只保留代码、最小测试 fixture 和这份主 README，方便评分者快速了解、构建和运行项目。
