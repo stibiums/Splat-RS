@@ -26,4 +26,5 @@ captures/
 # Local report drafts and rendered report artifacts.
 paper/
 SplatRS_report.pdf
-docs/report_draft.md
+docs/
+splatrs/README.md
